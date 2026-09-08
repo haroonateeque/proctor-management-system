@@ -941,3 +941,55 @@ html[data-theme="dark"] .st-expelled { background: #e6e4da; color: #14181b; }
 html[data-theme="dark"] .home-hero {
   background: linear-gradient(160deg, #122019 0%, #16342a 70%, #1b4034 100%);
 }
+
+/* ==============================================================
+   Login page (redesigned) — university brand panel + sign-in card
+   ============================================================== */
+.login-shell { min-height: 100vh; display: grid; }
+.login-brand {
+  background: linear-gradient(160deg, #122019 0%, #16342a 70%, #1b4034 100%);
+  color: var(--topbar-text);
+  border-bottom: 3px solid var(--accent);
+  padding: 40px 24px 34px;
+}
+.lb-inner { max-width: 480px; margin: 0 auto; }
+.lb-crest {
+  width: 56px; height: 56px; border-radius: 14px;
+  background: rgba(255,255,255,0.08);
+  border: 2px solid #d8b071;
+  color: #d8b071;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 16px;
+}
+.lb-crest .ic { width: 30px; height: 30px; }
+.lb-title { font-size: 28px; color: #fff; }
+.lb-tag { color: #c8cfc4; margin-top: 8px; line-height: 1.6; }
+.lb-points { list-style: none; margin-top: 22px; display: grid; gap: 12px; }
+.lb-points li { display: flex; gap: 12px; align-items: center; color: #dfe5dc; font-size: 15px; }
+.lb-points .icon {
+  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+  background: rgba(216,176,113,0.15); color: #d8b071;
+  display: flex; align-items: center; justify-content: center;
+}
+.lb-points .icon .ic { width: 18px; height: 18px; }
+.lb-foot {
+  margin-top: 26px; color: #7d8f83; font-size: 12px;
+  letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700;
+}
+.login-side { display: flex; align-items: center; justify-content: center; padding: 30px 16px 44px; }
+.login-side .login-card { max-width: 400px; width: 100%; }
+.lc-title { font-size: 24px; color: var(--primary-dark); }
+html[data-theme="dark"] .lc-title { color: #a9d8c2; }
+.lc-version { margin-top: 18px; text-align: center; color: var(--muted); font-size: 12px; }
+@media (min-width: 900px) {
+  .login-shell { grid-template-columns: 1.1fr 1fr; }
+  .login-brand {
+    border-bottom: none;
+    border-right: 3px solid var(--accent);
+    display: flex; align-items: center;
+    padding: 48px;
+  }
+  .lb-inner { margin: 0; max-width: none; }
+  .lb-title { font-size: 34px; }
+  .login-side { padding: 48px 32px; }
+}

@@ -3,6 +3,9 @@
 (async () => {
   (function () {
     document.getElementById("login-logo").innerHTML = UI.icon("book");
+    document.querySelectorAll("[data-icon]").forEach((el) => {
+      el.innerHTML = UI.icon(el.dataset.icon);
+    });
   })();
 
   const loginForm = document.getElementById("login-form");

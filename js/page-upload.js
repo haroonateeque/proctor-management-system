@@ -25,7 +25,7 @@
   const fileInput = document.getElementById("file-input");
   const fileError = document.getElementById("file-error");
 
-  let state = { headers: [], rows: [], mapping: null, built: null, added: [] };
+  let state = { headers: [], rows: [], mapping: null, built: null, added: [], existingIds: null };
 
   dropZone.addEventListener("click", () => fileInput.click());
   dropZone.addEventListener("keydown", (e) => {
@@ -113,8 +113,12 @@
   /* ---------- preview (requirement 19) ---------- */
 
   async function buildPreview() {
-    const existingIds = (await DB.getStudents({ includeRemoved: true })).map((s) => s.student_id);
-    const built = Excel.buildImport(state.rows, state.mapping, existingIds);
+    /* duplicate-check list is fetched once per file and reused
+       whenever the column mapping is adjusted — not per keystroke */
+    if (!state.existingIds) {
+      state.existingIds = (await DB.getStudents({ includeRemoved: true })).map((s) => s.student_id);
+    }
+    const built = Excel.buildImport(state.rows, state.mapping, state.existingIds);
     state.built = built;
 
     const summary = document.getElementById("preview-summary");
@@ -219,7 +223,7 @@
   }
 
   document.getElementById("restart-btn").addEventListener("click", () => {
-    state = { headers: [], rows: [], mapping: null, built: null, added: [] };
+    state = { headers: [], rows: [], mapping: null, built: null, added: [], existingIds: null };
     fileInput.value = "";
     show(1);
   });

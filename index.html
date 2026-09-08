@@ -5,18 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <meta name="theme-color" content="#1d3a30">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📗</text></svg>">
   <title>Sign in — Proctor Register</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <main class="page login-page">
-    <div class="login-card card">
-      <div class="login-logo" id="login-logo"></div>
-      <h1>Proctor Register</h1>
-      <p class="login-sub">Your simple student register</p>
-      <div class="form-error" id="login-error"></div>
-      <form id="login-form" novalidate>
+  <main class="login-shell">
+    <section class="login-brand">
+      <div class="lb-inner">
+        <div class="lb-crest" id="login-logo"></div>
+        <h2 class="lb-title">Proctor Register</h2>
+        <p class="lb-tag">The student discipline register for university proctors —
+        built for hostels, departments and everyday duty.</p>
+        <ul class="lb-points">
+          <li><span class="icon" data-icon="users"></span><span>One tidy register for every student you oversee</span></li>
+          <li><span class="icon" data-icon="upload"></span><span>Import a full class list from Excel in seconds</span></li>
+          <li><span class="icon" data-icon="warn"></span><span>Fines, warnings and suspensions with a clean paper trail</span></li>
+          <li><span class="icon" data-icon="save"></span><span>Backed up online — never lose a record again</span></li>
+        </ul>
+        <p class="lb-foot">Hostel &amp; Discipline Office</p>
+      </div>
+    </section>
+    <section class="login-side">
+      <div class="login-card card">
+        <h1 class="lc-title">Sign in</h1>
+        <p class="login-sub">Proctors only — continue with your Google account.</p>
+        <div class="form-error" id="login-error"></div>
+        <form id="login-form" novalidate>
         <button class="btn google-btn btn-block" id="google-btn" type="button">
           <svg class="g-logo" viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -40,7 +56,9 @@
         </ol>
         <p class="setup-foot">Full step-by-step walkthrough: README.md</p>
       </div>
+      <p class="lc-version">Proctor Register · v1.0</p>
     </div>
+    </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

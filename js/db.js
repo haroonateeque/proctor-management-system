@@ -411,47 +411,95 @@ const DB = (() => {
      BULK IMPORT (Excel) + import history (requirement 22)
      ============================================================= */
 
+  /* Bulk import: saves everyone in a few large batches instead of
+     one request per student, so even 1,000+ rows take seconds.
+     Excel.buildImport has already filtered duplicates and existing
+     students, so rows can go straight in. */
+  function chunk(list, size) {
+    const out = [];
+    for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+    return out;
+  }
+
   async function bulkAddStudents(list) {
-    const added = [];
-    const skipped = [];
-    for (const s of list) {
-      const res = await addStudent(s);
-      if (res.ok) added.push(res.student);
-      else skipped.push({ student: s, message: res.message });
+    const stamp = new Date().toISOString();
+    const added = list.map((s) => {
+      const row = cleanStudent(s);
+      row.id = row.id || newId();
+      row.status = "ACTIVE";
+      row.removed = false;
+      row.created_at = stamp;
+      row.updated_at = stamp;
+      return row;
+    });
+
+    if (CONNECTED) {
+      const uid = await currentUid();
+      let done = 0;
+      try {
+        for (const part of chunk(added, 200)) {
+          const { error } = await sb.from("students").upsert(part.map((s) => ({ ...s, owner_id: uid })));
+          if (error) throw new Error(friendlyMessage(error));
+          done += part.length;
+        }
+        for (const part of chunk(added, 500)) {
+          const { error } = await sb.from("history").insert(part.map((s) => ({
+            student_id: s.id,
+            type: "note",
+            description: "Added to the register.",
+            owner_id: uid,
+          })));
+          if (error) throw new Error(friendlyMessage(error));
+        }
+      } catch (err) {
+        if (done > 0) throw new Error(done + " students were added, but then it stopped: " + err.message);
+        throw err;
+      }
+    } else {
+      const all = JSON.parse(LS.getItem(K.students) || "[]");
+      all.push(...added);
+      LS.setItem(K.students, JSON.stringify(all));
+      const hist = JSON.parse(LS.getItem(K.history) || "[]");
+      hist.push(...added.map((s) => ({
+        id: "h_" + newId().slice(3),
+        student_id: s.id,
+        type: "note",
+        description: "Added to the register.",
+        created_at: stamp,
+      })));
+      LS.setItem(K.history, JSON.stringify(hist));
     }
+
     const summary = {
-      when: new Date().toISOString(),
+      when: stamp,
       added: added.length,
-      skipped: skipped.length,
+      skipped: 0,
       names: added.slice(0, 50).map((s) => s.name),
     };
     const past = await getSetting("import_history", []);
     past.unshift(summary);
     await setSetting("import_history", past.slice(0, 20));
-    return { added, skipped };
+    return { added, skipped: [] };
   }
 
-  /* Undo a whole import: removes exactly the students it added. */
+  /* Undo a whole import: removes exactly the students it added,
+     in two batch requests regardless of how many there were. */
   async function undoBulkAdd(addedStudents) {
-    let undone = 0;
-    for (const s of addedStudents) {
-      const full = await getStudentById(s.id);
-      if (full) {
-        const all = JSON.parse(LS.getItem(K.students) || "[]");
-        /* trial mode: remove completely, import was the only source */
-        LS.setItem(K.students, JSON.stringify(all.filter((x) => x.id !== s.id)));
-        undone++;
-      }
-    }
+    const ids = (addedStudents || []).map((s) => s.id).filter(Boolean);
+    if (!ids.length) return 0;
     if (CONNECTED) {
-      const ids = addedStudents.map((s) => s.id).filter(Boolean);
-      if (ids.length) {
-        await sb.from("history").delete().in("student_id", ids);
-        await sb.from("students").delete().in("id", ids);
-        undone = ids.length;
-      }
+      const hist = await sb.from("history").delete().in("student_id", ids);
+      if (hist.error) throw new Error(friendlyMessage(hist.error));
+      const del = await sb.from("students").delete().in("id", ids);
+      if (del.error) throw new Error(friendlyMessage(del.error));
+      return ids.length;
     }
-    return undone;
+    const idSet = new Set(ids);
+    const all = JSON.parse(LS.getItem(K.students) || "[]");
+    LS.setItem(K.students, JSON.stringify(all.filter((x) => !idSet.has(x.id))));
+    const histL = JSON.parse(LS.getItem(K.history) || "[]");
+    LS.setItem(K.history, JSON.stringify(histL.filter((h) => !idSet.has(h.student_id))));
+    return ids.length;
   }
 
   /* =============================================================
