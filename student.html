@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Student — Proctor Register</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="page">
+    <div class="topbar"><div class="topbar-inner">
+      <button class="back-btn" onclick="history.back()" aria-label="Go back">‹</button>
+      <span class="page-title">Student</span>
+    </div></div>
+
+    <div id="profile-zone" style="margin-top:16px"></div>
+
+    <h2 class="section-heading no-print">Quick actions</h2>
+    <div class="action-grid no-print" id="actions">
+      <button class="btn btn-secondary" data-act="fine"><span id="ic-money"></span> Record Fine</button>
+      <button class="btn btn-secondary" data-act="warning"><span id="ic-warn"></span> Give Warning</button>
+      <button class="btn btn-secondary" data-act="suspension"><span id="ic-stop"></span> Suspend</button>
+      <button class="btn btn-secondary" data-act="note"><span id="ic-note"></span> Add Note</button>
+      <a class="btn btn-secondary" href="add-student.html" id="edit-link"><span id="ic-edit"></span> Edit Details</a>
+      <button class="btn btn-secondary" data-act="print"><span id="ic-print"></span> Print Record</button>
+      <button class="btn btn-danger" data-act="remove"><span id="ic-trash"></span> Remove Student</button>
+    </div>
+
+    <h2 class="section-heading">Student History</h2>
+    <div id="history-zone"><div class="card">Loading…</div></div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/page-student.js"></script>
+</body>
+</html>

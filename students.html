@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Students — Proctor Register</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="page">
+    <div class="search-wrap">
+      <div class="search-box">
+        <span class="search-icon" id="ic-search"></span>
+        <input type="search" id="search" placeholder="Search by name or student ID…"
+               autocomplete="off" aria-label="Search students">
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+
+    <div id="list-zone">
+      <div class="list-header">
+        <span></span>
+        <span>Name</span>
+        <span>Student ID</span>
+        <span>Class / Dept</span>
+        <span class="sr-col">Section</span>
+        <span style="text-align:right">Status</span>
+        <span></span>
+      </div>
+      <div id="list"></div>
+      <div id="count-line" class="info-card"></div>
+    </div>
+
+    <div style="margin-top:16px" class="no-print">
+      <a class="btn btn-primary btn-block" href="add-student.html">➕ Add a Student</a>
+    </div>
+  </main>
+
+  <div class="bulk-bar" id="bulk-bar">
+    <div class="bb-count" id="bulk-count"></div>
+    <div class="bb-actions">
+      <button class="btn btn-light" data-bulk="fine">💰 Fine</button>
+      <button class="btn btn-light" data-bulk="warning">⚠️ Warning</button>
+      <button class="btn btn-light" data-bulk="suspension">⛔ Suspend</button>
+      <button class="btn btn-light" data-bulk="remove">🗑️ Remove</button>
+      <button class="btn btn-light" data-bulk="clear">✖ Clear</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/page-students.js"></script>
+</body>
+</html>

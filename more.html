@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>More — Proctor Register</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="page">
+    <h2 class="section-heading">Keep your records safe</h2>
+    <div class="menu-list">
+      <button class="menu-item" id="btn-backup">
+        <span class="icon" data-icon="save"></span>
+        <span>Download a Backup<span class="mi-sub">Saves a complete copy file on this device</span></span>
+      </button>
+      <button class="menu-item" id="btn-export-list">
+        <span class="icon" data-icon="sheet"></span>
+        <span>Download Student List<span class="mi-sub">Spreadsheet (CSV) of everyone in the register</span></span>
+      </button>
+    </div>
+
+    <h2 class="section-heading">Removed students</h2>
+    <div class="menu-list">
+      <button class="menu-item" id="btn-removed">
+        <span class="icon" data-icon="trash"></span>
+        <span>View Removed Students<span class="mi-sub">Put someone back if they were removed by mistake</span></span>
+      </button>
+    </div>
+
+    <h2 class="section-heading">Excel imports</h2>
+    <div class="menu-list">
+      <button class="menu-item" id="btn-imports">
+        <span class="icon" data-icon="history"></span>
+        <span>Past Imports<span class="mi-sub">What was added from Excel, and when</span></span>
+      </button>
+    </div>
+
+    <h2 class="section-heading">Help</h2>
+    <div class="card">
+      <h3 style="margin-bottom:6px">When something goes wrong</h3>
+      <div class="info-card" style="margin-top:0">
+        Messages this app may show, and what they mean:
+      </div>
+      <div class="error-dict" id="error-dict"></div>
+    </div>
+
+    <div style="margin-top:24px" class="no-print">
+      <button class="btn btn-secondary btn-block" id="btn-signout">Sign Out</button>
+    </div>
+    <div class="info-card" id="mode-note"></div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/page-more.js"></script>
+</body>
+</html>

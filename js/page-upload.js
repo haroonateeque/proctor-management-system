@@ -1,0 +1,226 @@
+/* Excel upload wizard: 3 simple steps for the proctor.
+   Step 1 choose file · Step 2 check · Step 3 done (requirements 2-4, 18-19). */
+(async () => {
+  const session = await DB.requireSession();
+  if (!session) return;
+  UI.buildChrome("upload");
+
+  const panels = { 1: document.getElementById("panel-1"), 2: document.getElementById("panel-2"), 3: document.getElementById("panel-3") };
+  const steps = { 1: document.getElementById("step-1"), 2: document.getElementById("step-2"), 3: document.getElementById("step-3") };
+  const LABELS = { 1: "Choose file", 2: "Check", 3: "Done" };
+  const dzIcon = document.getElementById("dz-icon");
+  if (dzIcon) dzIcon.innerHTML = UI.icon("sheet");
+
+  function show(n) {
+    [1, 2, 3].forEach((i) => {
+      panels[i].hidden = i !== n;
+      steps[i].classList.toggle("active", i === n);
+      steps[i].classList.toggle("done", i < n);
+      steps[i].innerHTML = (i < n ? "✓" : '<span class="st-num">' + i + "</span>") + " " + LABELS[i];
+    });
+  }
+  show(1);
+
+  const dropZone = document.getElementById("drop-zone");
+  const fileInput = document.getElementById("file-input");
+  const fileError = document.getElementById("file-error");
+
+  let state = { headers: [], rows: [], mapping: null, built: null, added: [] };
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  });
+  ["dragover", "dragenter"].forEach((ev) =>
+    dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.add("dragover"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.remove("dragover"); }));
+  dropZone.addEventListener("drop", (e) => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+
+  function fileErrorShow(msg) {
+    fileError.textContent = msg;
+    fileError.classList.add("show");
+  }
+
+  async function handleFile(file) {
+    fileError.classList.remove("show");
+    if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
+      return fileErrorShow("That doesn't look like an Excel or CSV file. Please choose a .xlsx or .csv file.");
+    }
+    UI.toast("Reading your file…", { duration: 1500 });
+    try {
+      const parsed = await Excel.readFile(file);
+      if (!parsed.headers.length || !parsed.rows.length) {
+        return fileErrorShow("The file appears to be empty. Please check it and try again.");
+      }
+      state.headers = parsed.headers;
+      state.rows = parsed.rows;
+      const saved = await DB.getSetting("excel_mapping", {});
+      state.mapping = Excel.detectColumns(parsed.headers, saved);
+      buildMappingPanel();
+      buildPreview();
+      show(2);
+    } catch (err) {
+      fileErrorShow("Sorry, this file could not be read. " +
+        "Please make sure it is a normal Excel or CSV file and try again.");
+    }
+  }
+
+  /* ---------- step 2: column check ---------- */
+
+  function buildMappingPanel() {
+    const auto = Object.keys(state.mapping);
+    const missing = Excel.REQUIRED.filter((f) => !state.mapping[f]);
+    const zone = document.getElementById("map-zone");
+    if (missing.length === 0) {
+      zone.innerHTML = '<div class="summary-box">✅ All columns recognized — ' +
+        auto.length + " of " + Object.keys(Excel.LABELS).length + " details will be copied. " +
+        "Just check the preview below.</div>";
+      return;
+    }
+    /* Ask only about what could not be recognized */
+    const options = ['<option value="">— choose a column —</option>']
+      .concat(state.headers.map((h) => '<option value="' + UI.escapeHtml(h) + '">' + UI.escapeHtml(h) + "</option>"))
+      .join("");
+    zone.innerHTML =
+      '<div class="card" style="margin-bottom:16px">' +
+      "<h3>Which column is which?</h3>" +
+      '<p style="color:var(--muted);margin-bottom:12px">A few columns could not be recognized. ' +
+      "Please match them below.</p>" +
+      '<table class="mapping-table">' +
+      Object.keys(Excel.LABELS).map((f) => {
+        const req = Excel.REQUIRED.includes(f) ? " required" : "";
+        const val = state.mapping[f] || "";
+        return "<tr><td" + req + ">" + Excel.LABELS[f] + "</td>" +
+          '<td><select data-field="' + f + '">' +
+          options.replace('value="' + UI.escapeHtml(val) + '"', 'value="' + UI.escapeHtml(val) + '" selected') +
+          "</select></td></tr>";
+      }).join("") +
+      "</table></div>";
+    zone.querySelectorAll("select").forEach((sel) =>
+      sel.addEventListener("change", () => {
+        state.mapping[sel.dataset.field] = sel.value || undefined;
+        if (!sel.value) delete state.mapping[sel.dataset.field];
+        buildPreview();
+      }));
+  }
+  /* ---------- preview (requirement 19) ---------- */
+
+  async function buildPreview() {
+    const existingIds = (await DB.getStudents({ includeRemoved: true })).map((s) => s.student_id);
+    const built = Excel.buildImport(state.rows, state.mapping, existingIds);
+    state.built = built;
+
+    const summary = document.getElementById("preview-summary");
+    const missing = Excel.REQUIRED.filter((f) => !state.mapping[f]);
+    if (missing.length) {
+      summary.innerHTML = "⚠️ Please choose the <strong>" +
+        missing.map((f) => Excel.LABELS[f]).join("</strong> and <strong>") +
+        "</strong> column" + (missing.length > 1 ? "s" : "") + " above before importing.";
+    } else {
+      summary.innerHTML =
+        '<span class="sb-num">' + built.newStudents.length + "</span> new student" +
+        (built.newStudents.length === 1 ? "" : "s") + " will be added" +
+        (built.alreadyCount ? " · " + built.alreadyCount + " already in the register (will be skipped)" : "") +
+        (built.issues.length ? " · " + built.issues.length + " row" + (built.issues.length === 1 ? "" : "s") + " with problems (see below)" : "");
+    }
+
+    const list = document.getElementById("preview-list");
+    list.innerHTML = built.newStudents.length
+      ? built.newStudents.slice(0, 25).map((s) =>
+          '<div class="preview-item"><div class="pv-name">' + UI.escapeHtml(s.name) + "</div>" +
+          '<div class="pv-meta">' + UI.escapeHtml([s.student_id, s.class_name, s.section]
+            .filter(Boolean).join(" · ")) + "</div></div>"
+        ).join("") +
+        (built.newStudents.length > 25
+          ? '<div class="search-note">…and ' + (built.newStudents.length - 25) + " more</div>"
+          : "")
+      : '<div class="search-note">No new students to add from this file.</div>';
+
+    const iz = document.getElementById("issue-zone");
+    iz.innerHTML = built.issues.length
+      ? '<div class="card"><h3 style="margin-bottom:8px">Rows that will be skipped</h3>' +
+        '<div class="info-card" style="margin-top:0">' +
+        built.issues.map(UI.escapeHtml).join("<br>") + "</div></div>"
+      : "";
+  }
+
+  /* ---------- import (requirement 2, 22) ---------- */
+
+  document.getElementById("import-btn").addEventListener("click", async () => {
+    if (!state.built) return;
+    const missing = Excel.REQUIRED.filter((f) => !state.mapping[f]);
+    if (missing.length) {
+      UI.toast("Please choose the " + missing.map((f) => Excel.LABELS[f]).join(" and ") +
+        " column first.", { type: "error" });
+      return;
+    }
+    if (!state.built.newStudents.length) {
+      UI.toast("There are no new students to add from this file.", { type: "error" });
+      return;
+    }
+    const btn = document.getElementById("import-btn");
+    btn.disabled = true;
+    btn.textContent = "Adding students…";
+    try {
+      const res = await DB.bulkAddStudents(state.built.newStudents);
+      /* remember the mapping for next time (requirement 4) */
+      const remembered = {};
+      Object.keys(state.mapping).forEach((f) => { remembered[f] = state.mapping[f]; });
+      await DB.setSetting("excel_mapping", remembered);
+      state.added = res.added;
+      showDone(res);
+    } catch (err) {
+      UI.toast(err.message || "Could not import. Please try again.", { type: "error" });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Add These Students";
+    }
+  });
+
+  function showDone(res) {
+    const skippedMsg = res.skipped.length
+      ? " · " + res.skipped.length + " skipped"
+      : "";
+    document.getElementById("done-state").innerHTML =
+      '<div class="empty-icon">' + UI.icon("userplus") + "</div>" +
+      '<div class="empty-title">' + res.added.length + " student" +
+      (res.added.length === 1 ? "" : "s") + " added to the register" + skippedMsg + "</div>" +
+      '<div class="empty-desc">All names above are now in your student list.</div>' +
+      (res.added.length
+        ? '<button class="btn btn-danger" id="undo-import">Undo This Import</button>'
+        : "") +
+      '<div style="margin-top:12px">' +
+      '<a class="btn btn-primary" href="students.html">View Student List</a></div>';
+    show(3);
+
+    const undoBtn = document.getElementById("undo-import");
+    if (undoBtn) {
+      undoBtn.addEventListener("click", async () => {
+        undoBtn.disabled = true;
+        try {
+          const n = await DB.undoBulkAdd(state.added);
+          UI.toast("Import undone — " + n + " student" + (n === 1 ? "" : "s") + " removed.", { type: "success" });
+          undoBtn.textContent = "Undone ✓";
+          document.getElementById("done-state").querySelector(".empty-title").textContent =
+            "Import undone";
+        } catch (err) {
+          undoBtn.disabled = false;
+          UI.toast(err.message || "Could not undo.", { type: "error" });
+        }
+      });
+    }
+  }
+
+  document.getElementById("restart-btn").addEventListener("click", () => {
+    state = { headers: [], rows: [], mapping: null, built: null, added: [] };
+    fileInput.value = "";
+    show(1);
+  });
+})();
