@@ -112,6 +112,13 @@ const DB = (() => {
   async function signOut() {
     if (CONNECTED) { try { await sb.auth.signOut(); } catch (e) { /* ignore */ } }
     LS.removeItem(K.session);
+    /* belt-and-braces: wipe Supabase's own cached session keys so a
+       slow/blocked sign-out request can never leave a live token behind */
+    try {
+      Object.keys(LS)
+        .filter((k) => k.indexOf("sb-") === 0)
+        .forEach((k) => LS.removeItem(k));
+    } catch (e) { /* ignore */ }
   }
   /* =============================================================
      STUDENTS

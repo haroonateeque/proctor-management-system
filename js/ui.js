@@ -237,9 +237,9 @@ const UI = (() => {
     document.body.appendChild(bottom);
 
     document.querySelectorAll('a[href="#signout"]').forEach((a) => {
-      a.addEventListener("click", (e) => {
+      a.addEventListener("click", async (e) => {
         e.preventDefault();
-        DB.signOut();
+        await DB.signOut();
         window.location.href = "index.html";
       });
     });
