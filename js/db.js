@@ -56,9 +56,26 @@ const DB = (() => {
   async function getSession() {
     if (CONNECTED) {
       const { data } = await sb.auth.getSession();
-      return data && data.session ? { email: data.session.user.email } : null;
+      return data && data.session
+        ? { email: data.session.user.email, id: data.session.user.id }
+        : null;
     }
     return JSON.parse(LS.getItem(K.session) || "null");
+  }
+
+  /* The signed-in proctor's Supabase user id. Every saved row is
+     tagged with it and every read is filtered by it, so each
+     proctor only ever sees their own register — never anyone
+     else's students, history, or settings. */
+  let cachedUid = null;
+  let uidFetched = false;
+  async function currentUid() {
+    if (!CONNECTED) return null;
+    if (uidFetched) return cachedUid;
+    const { data } = await sb.auth.getSession();
+    cachedUid = data && data.session ? data.session.user.id : null;
+    uidFetched = true;
+    return cachedUid;
   }
 
   async function signIn(email, password) {
@@ -131,7 +148,8 @@ const DB = (() => {
     opts = opts || {};
     const includeRemoved = !!opts.includeRemoved;
     if (CONNECTED) {
-      let q = sb.from("students").select("*").order("name");
+      const uid = await currentUid();
+      let q = sb.from("students").select("*").eq("owner_id", uid).order("name");
       if (!includeRemoved) q = q.eq("removed", false);
       const { data, error } = await q;
       if (error) throw new Error(friendlyMessage(error));
@@ -144,7 +162,9 @@ const DB = (() => {
   async function getStudentById(id) {
     if (!id) return null;
     if (CONNECTED) {
-      const { data, error } = await sb.from("students").select("*").eq("id", id).maybeSingle();
+      const uid = await currentUid();
+      const { data, error } = await sb.from("students").select("*")
+        .eq("owner_id", uid).eq("id", id).maybeSingle();
       if (error) throw new Error(friendlyMessage(error));
       return data ? cleanStudent(data) : null;
     }
@@ -223,6 +243,7 @@ const DB = (() => {
 
   async function saveStudentRow(s) {
     if (CONNECTED) {
+      s.owner_id = await currentUid();
       const { error } = await sb.from("students").upsert(s);
       if (error) throw new Error(friendlyMessage(error));
       return;
@@ -297,6 +318,7 @@ const DB = (() => {
       const row = { student_id: entry.student_id, type: entry.type, description: entry.description };
       if (entry.amount != null) row.amount = entry.amount;
       if (entry.paid) row.paid = true;
+      row.owner_id = await currentUid();
       const { error } = await sb.from("history").insert(row);
       if (error) throw new Error(friendlyMessage(error));
     } else {
@@ -309,8 +331,10 @@ const DB = (() => {
 
   async function getHistory(studentId) {
     if (CONNECTED) {
+      const uid = await currentUid();
       const { data, error } = await sb.from("history").select("*")
-        .eq("student_id", studentId).order("created_at", { ascending: false });
+        .eq("owner_id", uid).eq("student_id", studentId)
+        .order("created_at", { ascending: false });
       if (error) throw new Error(friendlyMessage(error));
       return data || [];
     }
@@ -320,7 +344,9 @@ const DB = (() => {
   }
   async function getHistoryEntry(historyId) {
     if (CONNECTED) {
-      const { data } = await sb.from("history").select("*").eq("id", historyId).maybeSingle();
+      const uid = await currentUid();
+      const { data } = await sb.from("history").select("*")
+        .eq("owner_id", uid).eq("id", historyId).maybeSingle();
       return data || null;
     }
     const all = JSON.parse(LS.getItem(K.history) || "[]");
@@ -427,7 +453,9 @@ const DB = (() => {
 
   async function getSetting(key, fallback) {
     if (CONNECTED) {
-      const { data } = await sb.from("settings").select("value").eq("key", key).maybeSingle();
+      const uid = await currentUid();
+      const { data } = await sb.from("settings").select("value")
+        .eq("owner_id", uid).eq("key", key).maybeSingle();
       if (data && data.value != null) {
         try { return typeof data.value === "string" ? JSON.parse(data.value) : data.value; }
         catch (e) { return data.value; }
@@ -440,8 +468,8 @@ const DB = (() => {
 
   async function setSetting(key, value) {
     if (CONNECTED) {
-      const payload = { key, value: JSON.stringify(value) };
-      const { error } = await sb.from("settings").upsert(payload, { onConflict: "key" });
+      const payload = { key, value: JSON.stringify(value), owner_id: await currentUid() };
+      const { error } = await sb.from("settings").upsert(payload, { onConflict: "owner_id,key" });
       if (error) throw new Error(friendlyMessage(error));
       return;
     }
@@ -449,6 +477,40 @@ const DB = (() => {
     all[key] = value;
     LS.setItem(K.settings, JSON.stringify(all));
   }
+  /* Recent events across the whole register (home screen feed).
+     Joins the student's name so entries can link to the profile. */
+  async function getRecentActivity(limit) {
+    const max = limit || 6;
+    if (CONNECTED) {
+      const uid = await currentUid();
+      const { data, error } = await sb.from("history")
+        .select("id, student_id, type, description, amount, paid, created_at, students(name)")
+        .eq("owner_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(max);
+      if (error) throw new Error(friendlyMessage(error));
+      return (data || []).map((h) => ({
+        id: h.id,
+        type: h.type,
+        description: h.description,
+        amount: h.amount,
+        paid: h.paid,
+        created_at: h.created_at,
+        studentId: h.student_id,
+        studentName: (h.students && h.students.name) || "Unknown student",
+      }));
+    }
+    const hist = JSON.parse(LS.getItem(K.history) || "[]");
+    const studs = JSON.parse(LS.getItem(K.students) || "[]");
+    return hist.slice()
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, max)
+      .map((h) => {
+        const s = studs.find((x) => x.id === h.student_id);
+        return { ...h, studentId: h.student_id, studentName: s ? s.name : "Unknown student" };
+      });
+  }
+
   /* =============================================================
      COUNTS + EXPORT (home screen numbers, backups)
      ============================================================= */
@@ -467,7 +529,9 @@ const DB = (() => {
     const students = await getStudents({ includeRemoved: true });
     let history = [];
     if (CONNECTED) {
-      const { data, error } = await sb.from("history").select("*").order("created_at", { ascending: false });
+      const uid = await currentUid();
+      const { data, error } = await sb.from("history").select("*").eq("owner_id", uid)
+        .order("created_at", { ascending: false });
       if (error) throw new Error(friendlyMessage(error));
       history = data || [];
     } else {
@@ -534,7 +598,7 @@ const DB = (() => {
     addStudent, updateStudent, removeStudent,
     setStatus, addHistory, getHistory, markFinePaid, removeFine,
     bulkAddStudents, undoBulkAdd,
-    getSetting, setSetting,
+    getSetting, setSetting, getRecentActivity,
     getStats, exportBackup, studentsToCsv, downloadFile,
   };
 })();

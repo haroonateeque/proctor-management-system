@@ -2,23 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1d3a30">
   <title>Home — Proctor Register</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <main class="page">
-    <div class="home-greeting">
+  <header class="home-hero">
+    <div class="home-hero-inner">
+      <p class="hh-date" id="hero-date"></p>
       <h1 id="greeting">Welcome</h1>
-      <p>What would you like to do today?</p>
+      <p class="hh-sub" id="hero-sub">Here's how your register is doing today.</p>
     </div>
+  </header>
 
-    <div id="stats-zone" hidden style="margin:18px 0 4px">
-      <div id="stats-grid" class="stat-tiles"></div>
-    </div>
+  <main class="page home-page">
+    <section id="stats-zone" hidden>
+      <div id="stats-grid" class="stat-cards"></div>
+      <div id="status-chips" class="status-chips" hidden></div>
+    </section>
 
     <h2 class="section-heading">Quick start</h2>
-    <div class="big-actions">
+    <div class="big-actions home-actions">
       <a class="big-action" href="add-student.html">
         <span class="icon" data-icon="userplus"></span>
         <span>
@@ -41,6 +47,13 @@
         </span>
       </a>
     </div>
+
+    <section id="activity-zone" hidden>
+      <h2 class="section-heading">Recent activity</h2>
+      <div class="card activity-card">
+        <ul class="activity-list" id="activity-list"></ul>
+      </div>
+    </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
