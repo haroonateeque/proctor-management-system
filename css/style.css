@@ -872,3 +872,72 @@ html, body { overflow-x: hidden; overflow-x: clip; }
   .topbar .brand { font-size: 15.5px; }
   .topbar .nav-link { padding: 7px 8px; font-size: 13.5px; }
 }
+
+
+/* ==============================================================
+   Dark mode — toggled from More; preference kept per device.
+   The early inline script in each page's <head> applies the
+   saved choice before the stylesheet paints (no flash).
+   ============================================================== */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #14181b;
+  --card: #1e2422;
+  --ink: #e6e4da;
+  --muted: #97a29a;
+  --border: #2d3531;
+  --border-dark: #3e4842;
+
+  --primary: #35836a;
+  --primary-dark: #123128;
+  --primary-soft: #20312a;
+
+  --danger: #e08a7a;
+  --danger-soft: #38211c;
+  --success: #82c79e;
+  --success-soft: #1c2f23;
+  --warning: #d9b45e;
+  --warning-soft: #332a16;
+  --orange: #e09a63;
+  --orange-soft: #342415;
+  --dark-red: #d98d84;
+  --dark-red-soft: #341d1b;
+
+  --topbar: #122019;
+  --accent: #c97a45;
+  --shadow: 0 1px 2px rgba(0,0,0,0.45), 0 1px 6px rgba(0,0,0,0.3);
+}
+
+/* surfaces that were hardcoded light */
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background: #242b28;
+  color: var(--ink);
+  border-color: #46514a;
+}
+
+/* text that used dark-green heading colors → light equivalents */
+html[data-theme="dark"] .stat-card .st-num,
+html[data-theme="dark"] .stat-tile .st-num,
+html[data-theme="dark"] .form-section h3,
+html[data-theme="dark"] .dialog h3,
+html[data-theme="dark"] .login-card h1,
+html[data-theme="dark"] .field label { color: #a9d8c2; }
+html[data-theme="dark"] a,
+html[data-theme="dark"] .bottom-nav a.active,
+html[data-theme="dark"] .steps .step.active,
+html[data-theme="dark"] .summary-box .sb-num { color: #6ec399; }
+html[data-theme="dark"] .btn-secondary { color: #cfe4d8; }
+html[data-theme="dark"] .btn-secondary:hover { border-color: #6ec399; }
+html[data-theme="dark"] .activity-item .icon,
+html[data-theme="dark"] .big-action .icon,
+html[data-theme="dark"] .menu-item .icon,
+html[data-theme="dark"] .stat-card .sc-icon { color: #a9d8c2; }
+html[data-theme="dark"] .google-btn { color: #24312b; }
+html[data-theme="dark"] .st-expelled { background: #e6e4da; color: #14181b; }
+
+/* keep the hero deep and calm instead of glowing */
+html[data-theme="dark"] .home-hero {
+  background: linear-gradient(160deg, #122019 0%, #16342a 70%, #1b4034 100%);
+}

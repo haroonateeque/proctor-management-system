@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1d3a30">
+  <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <title>More — Proctor Register</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="css/style.css">
@@ -35,6 +36,14 @@
       <button class="menu-item" id="btn-imports">
         <span class="icon" data-icon="history"></span>
         <span>Past Imports<span class="mi-sub">What was added from Excel, and when</span></span>
+      </button>
+    </div>
+
+    <h2 class="section-heading">Appearance</h2>
+    <div class="menu-list">
+      <button class="menu-item" id="btn-theme">
+        <span class="icon" data-icon="moon"></span>
+        <span>Dark Mode<span class="mi-sub" id="theme-sub">Off — tap for dark mode</span></span>
       </button>
     </div>
 

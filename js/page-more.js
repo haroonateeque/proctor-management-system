@@ -15,6 +15,18 @@
     el.innerHTML = UI.icon(el.dataset.icon);
   });
 
+  /* ---------- dark mode toggle ---------- */
+  const themeSub = $("theme-sub");
+  function paintTheme() {
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    themeSub.textContent = dark ? "On — tap for light mode" : "Off — tap for dark mode";
+  }
+  paintTheme();
+  $("btn-theme").addEventListener("click", () => {
+    UI.setTheme(document.documentElement.getAttribute("data-theme") !== "dark");
+    paintTheme();
+  });
+
   /* ---------- backups (requirement 10 / 23) ---------- */
 
   $("btn-backup").addEventListener("click", async () => {
