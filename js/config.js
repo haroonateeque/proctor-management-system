@@ -12,9 +12,9 @@
    4. Paste your project values below
    ============================================================= */
 
-const SUPABASE_URL = "";        // e.g. "https://abcd1234.supabase.co"
+const SUPABASE_URL = "https://ywniaxzwaymvtfnlegrd.supabase.co";
 
-const SUPABASE_ANON_KEY = "";   // your project's "anon public" key
+const SUPABASE_ANON_KEY = "sb_publishable_JH6ilojNz6aN0P0miivQSA_y3_xPE1z";   // your project's "anon public" key
 
 /* Both values are in Supabase → Settings → API.
    Until they are filled in, the sign-in page shows setup
