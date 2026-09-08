@@ -845,3 +845,30 @@ input.invalid, textarea.invalid, select.invalid {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==============================================================
+   Mobile overflow hardening — nothing may ever push the page
+   wider than the screen.
+   ============================================================== */
+html, body { overflow-x: hidden; overflow-x: clip; }
+
+/* Upload wizard: the column-mapping table could be pushed wider
+   than the screen by long Excel headers — lock it down. */
+.mapping-table { table-layout: fixed; }
+.mapping-table td { vertical-align: middle; }
+.mapping-table td:first-child { width: 42%; overflow-wrap: anywhere; }
+.mapping-table td select { width: 100%; max-width: 100%; }
+
+/* Long text (emails, addresses, names) wraps instead of overflowing */
+.sr-meta, .pv-meta, .pg-value, .ai-title, .tl-text { overflow-wrap: anywhere; }
+.profile-head h1 { min-width: 0; overflow-wrap: anywhere; }
+
+/* Buttons may shrink so two side-by-side fit even a 320px screen */
+.form-actions .btn { flex: 1 1 140px; min-width: 0; }
+
+/* Narrow desktop: keep the five top-bar links on one line */
+@media (min-width: 768px) and (max-width: 920px) {
+  .topbar-inner { gap: 8px; }
+  .topbar .brand { font-size: 15.5px; }
+  .topbar .nav-link { padding: 7px 8px; font-size: 13.5px; }
+}
