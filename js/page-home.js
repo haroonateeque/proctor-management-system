@@ -99,4 +99,66 @@
   } catch (err) {
     /* the activity feed is a nice-to-have; stay quiet if it fails */
   }
+
+  /* ---------- unpaid fines card ---------- */
+  const CHAT_ICON = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+  const CHECK_ICON = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  try {
+    const fines = await DB.getUnpaidFines();
+    if (fines.length) {
+      document.getElementById("fines-zone").hidden = false;
+      const total = fines.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+      document.getElementById("fines-total-num").textContent = UI.formatMoney(total);
+      document.getElementById("fines-total-count").textContent =
+        fines.length + " fine" + (fines.length === 1 ? "" : "s") + " awaiting payment";
+      document.getElementById("fines-list").innerHTML = fines.slice(0, 8).map((f) =>
+        '<li><div class="activity-item">' +
+        '<span class="icon tone-danger">' + UI.icon("money") + "</span>" +
+        '<span class="ai-main"><span class="ai-title">' + UI.escapeHtml(f.studentName) + "</span>" +
+        '<span class="ai-sub">' + UI.escapeHtml(f.description) + " · " +
+        UI.escapeHtml(UI.formatMoney(f.amount)) + "</span></span>" +
+        '<span class="fine-actions">' +
+        '<button class="mini-btn" data-wa="' +
+        encodeURIComponent(f.studentName + "|" + (f.guardianPhone || "") + "|" + (Number(f.amount) || 0) + "|" + f.description) +
+        '" title="Notify guardian on WhatsApp">' + CHAT_ICON + "</button>" +
+        '<button class="mini-btn" data-fpaid="' + f.id + '" title="Mark as paid">' + CHECK_ICON + "</button>" +
+        "</span></div></li>"
+      ).join("") +
+      (fines.length > 8
+        ? '<li><div class="fines-more">and ' + (fines.length - 8) + " more on the Students page…</div></li>"
+        : "");
+    }
+  } catch (err) {
+    /* the fines card is optional; stay quiet if it fails */
+  }
+
+  /* fines card buttons: WhatsApp + mark paid */
+  const finesList = document.getElementById("fines-list");
+  if (finesList) {
+    finesList.addEventListener("click", (e) => {
+      const waBtn = e.target.closest("[data-wa]");
+      const paidBtn = e.target.closest("[data-fpaid]");
+      if (waBtn) {
+        const parts = waBtn.dataset.wa.split("|").map(decodeURIComponent);
+        const name = parts[0], phone = parts[1], amount = parts[2], desc = parts.slice(3).join("|");
+        let digits = String(phone || "").replace(/\D/g, "");
+        if (digits.startsWith("0")) digits = "92" + digits.slice(1);
+        if (!digits) {
+          UI.toast("No guardian phone number saved for this student.", { type: "error" });
+          return;
+        }
+        const msg = "Respected Guardian, a fine of Rs. " +
+          Number(amount).toLocaleString("en-US") + " has been recorded for " + name +
+          " in the proctor register. Reason: " + desc + ". Kindly arrange the payment. Thank you.";
+        window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(msg), "_blank");
+        return;
+      }
+      if (paidBtn) {
+        DB.markFinePaid(paidBtn.dataset.fpaid).then((res) => {
+          if (res.ok) { UI.toast("Fine marked as paid.", { type: "success" }); location.reload(); }
+          else UI.toast(res.message, { type: "error" });
+        });
+      }
+    });
+  }
 })();

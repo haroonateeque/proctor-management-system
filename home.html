@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1d3a30">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📗</text></svg>">
+  <link rel="manifest" href="manifest.webmanifest">
   <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <title>Home — Proctor Register</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -23,6 +24,17 @@
     <section id="stats-zone" hidden>
       <div id="stats-grid" class="stat-cards"></div>
       <div id="status-chips" class="status-chips" hidden></div>
+    </section>
+
+    <section id="fines-zone" hidden>
+      <h2 class="section-heading">Unpaid fines</h2>
+      <div class="card fines-card">
+        <div class="fines-headline">
+          <span class="ft-num" id="fines-total-num"></span>
+          <span class="ft-count" id="fines-total-count"></span>
+        </div>
+        <ul class="activity-list" id="fines-list"></ul>
+      </div>
     </section>
 
     <h2 class="section-heading">Quick start</h2>

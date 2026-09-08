@@ -993,3 +993,25 @@ html[data-theme="dark"] .lc-title { color: #a9d8c2; }
   .lb-title { font-size: 34px; }
   .login-side { padding: 48px 32px; }
 }
+
+/* ==============================================================
+   Unpaid fines card (home)
+   ============================================================== */
+.fines-card { padding: 16px; }
+.fines-headline { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.ft-num {
+  font-family: var(--serif); font-size: 30px;
+  color: var(--danger); font-weight: 700; line-height: 1;
+}
+.ft-count { color: var(--muted); font-weight: 600; font-size: 14px; }
+.fine-actions { display: flex; gap: 6px; }
+.mini-btn {
+  width: 34px; height: 34px; border-radius: 9px;
+  border: 1px solid var(--border-dark);
+  background: var(--card); color: var(--primary-dark);
+  cursor: pointer; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.mini-btn .ic { width: 17px; height: 17px; }
+.mini-btn:hover { background: var(--primary-soft); }
+.fines-more { color: var(--muted); font-size: 13px; padding: 8px 10px; }

@@ -566,6 +566,41 @@ const DB = (() => {
       });
   }
 
+  /* Unpaid fines across the register (home screen money card). */
+  async function getUnpaidFines() {
+    if (CONNECTED) {
+      const uid = await currentUid();
+      const { data, error } = await sb.from("history")
+        .select("id, student_id, type, description, amount, paid, created_at, students(name, guardian_phone)")
+        .eq("owner_id", uid).eq("type", "fine").eq("paid", false)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(friendlyMessage(error));
+      return (data || []).map((h) => ({
+        id: h.id,
+        studentId: h.student_id,
+        studentName: (h.students && h.students.name) || "Unknown student",
+        guardianPhone: (h.students && h.students.guardian_phone) || "",
+        description: h.description,
+        amount: h.amount,
+        created_at: h.created_at,
+      }));
+    }
+    const hist = JSON.parse(LS.getItem(K.history) || "[]");
+    const studs = JSON.parse(LS.getItem(K.students) || "[]");
+    return hist
+      .filter((h) => h.type === "fine" && !h.paid)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map((h) => {
+        const s = studs.find((x) => x.id === h.student_id) || {};
+        return {
+          id: h.id, studentId: h.student_id,
+          studentName: s.name || "Unknown student",
+          guardianPhone: s.guardian_phone || "",
+          description: h.description, amount: h.amount, created_at: h.created_at,
+        };
+      });
+  }
+
   /* =============================================================
      COUNTS + EXPORT (home screen numbers, backups)
      ============================================================= */
@@ -653,7 +688,7 @@ const DB = (() => {
     addStudent, updateStudent, removeStudent,
     setStatus, addHistory, getHistory, markFinePaid, removeFine,
     bulkAddStudents, undoBulkAdd,
-    getSetting, setSetting, getRecentActivity,
+    getSetting, setSetting, getRecentActivity, getUnpaidFines,
     getStats, exportBackup, studentsToCsv, downloadFile,
   };
 })();

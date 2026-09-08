@@ -34,6 +34,7 @@
   });
 
   let student = null;
+  let currentHistory = [];
 
   function initials(name) {
     return String(name || "?").trim().split(/\s+/).slice(0, 2)
@@ -85,7 +86,8 @@
     if (h.type === "fine" && !h.paid) {
       actions =
         '<button class="btn btn-small btn-secondary" data-paid="' + h.id + '">Mark as Paid</button>' +
-        '<button class="btn btn-small btn-secondary" data-remove-fine="' + h.id + '">Remove Fine</button>';
+        '<button class="btn btn-small btn-secondary" data-remove-fine="' + h.id + '">Remove Fine</button>' +
+        '<button class="btn btn-small btn-secondary" data-wa-fine="' + h.id + '">Notify Guardian on WhatsApp</button>';
     }
     return '<li class="' + cls + '">' +
       '<div class="tl-date">' + UI.formatDate(h.created_at) + "</div>" +
@@ -109,6 +111,7 @@
       }
       profileZone.innerHTML = profileHtml(student);
       const hist = await DB.getHistory(studentId);
+      currentHistory = hist;
       historyZone.innerHTML = hist.length
         ? '<div class="card"><ul class="timeline">' + hist.map(historyItem).join("") + "</ul></div>"
         : '<div class="card">' + UI.emptyState({
@@ -202,8 +205,27 @@
   /* ---------- mark fine paid / remove fine ---------- */
 
   historyZone.addEventListener("click", async (e) => {
+    const waBtn = e.target.closest("[data-wa-fine]");
     const paidBtn = e.target.closest("[data-paid]");
     const remBtn = e.target.closest("[data-remove-fine]");
+
+    if (waBtn) {
+      const fine = currentHistory.find((x) => x.id === waBtn.dataset.waFine);
+      if (!fine) return;
+      let digits = String((student && student.guardian_phone) || "").replace(/\D/g, "");
+      if (digits.startsWith("0")) digits = "92" + digits.slice(1);
+      if (!digits) {
+        UI.toast("No guardian phone number saved for this student — add one via Edit first.", { type: "error" });
+        return;
+      }
+      const msg = "Respected Guardian, a fine of Rs. " +
+        Number(fine.amount || 0).toLocaleString("en-US") +
+        " has been recorded for " + student.name + " (ID: " + student.student_id + ")." +
+        " Reason: " + fine.description + ". Kindly arrange the payment. Thank you.";
+      window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(msg), "_blank");
+      return;
+    }
+
     if (!paidBtn && !remBtn) return;
 
     if (paidBtn) {
