@@ -20,7 +20,13 @@
       .map((w) => w.charAt(0).toUpperCase()).join("");
   }
 
-  /* ---------- list rendering ---------- */
+  /* ---------- list rendering (shown in pages so a big register
+     never floods the screen with thousands of rows at once) ---------- */
+
+  const PAGE_SIZE = 50;
+  let lastResults = [];
+  let shown = PAGE_SIZE;
+  let paintedTerm = null;
 
   function rowHtml(s) {
     const cls = [s.class_name, s.department].filter(Boolean).join(" · ");
@@ -41,35 +47,50 @@
       "</div>";
   }
 
+  function paint() {
+    const term = searchEl.value;
+    if (!lastResults.length) {
+      listEl.innerHTML = term
+        ? UI.emptyState({
+            icon: UI.icon("search"),
+            title: 'No students found for "' + term + '"',
+            description: "Try a shorter part of the name or just part of the student ID.",
+          })
+        : UI.emptyState({
+            icon: UI.icon("users"),
+            title: "Your register is empty",
+            description: "Add your first student to get started.",
+            action: { href: "add-student.html", label: "Add a Student" },
+          });
+      countEl.textContent = "";
+      updateBulkBar();
+      return;
+    }
+    const visible = lastResults.slice(0, shown);
+    const hidden = lastResults.length - visible.length;
+    listEl.innerHTML = visible.map(rowHtml).join("") +
+      (hidden > 0
+        ? '<button class="btn btn-secondary btn-block" id="show-more">' +
+          "Show " + Math.min(hidden, PAGE_SIZE) + " more of " + hidden + "</button>"
+        : "");
+    countEl.textContent = lastResults.length + " student" + (lastResults.length === 1 ? "" : "s") +
+      (term ? ' found for "' + term + '"' : " in the register") +
+      (visible.length < lastResults.length ? " · showing first " + visible.length : "");
+    listEl.querySelectorAll("[data-check]").forEach((cb) => {
+      cb.checked = selected.has(cb.dataset.check);
+    });
+    const more = document.getElementById("show-more");
+    if (more) more.addEventListener("click", () => { shown += PAGE_SIZE; paint(); });
+    updateBulkBar();
+  }
+
   async function renderList() {
+    const term = searchEl.value;
+    if (term !== paintedTerm) { shown = PAGE_SIZE; paintedTerm = term; }
     listEl.innerHTML = UI.spinner();
     try {
-      const term = searchEl.value;
-      const students = await DB.searchStudents(term);
-      if (!students.length) {
-        listEl.innerHTML = term
-          ? UI.emptyState({
-              icon: UI.icon("search"),
-              title: 'No students found for "' + term + '"',
-              description: "Try a shorter part of the name or just part of the student ID.",
-            })
-          : UI.emptyState({
-              icon: UI.icon("users"),
-              title: "Your register is empty",
-              description: "Add your first student to get started.",
-              action: { href: "add-student.html", label: "Add a Student" },
-            });
-        countEl.textContent = "";
-      } else {
-        listEl.innerHTML = students.map(rowHtml).join("");
-        countEl.textContent = students.length + " student" + (students.length === 1 ? "" : "s") +
-          (term ? ' found for "' + term + '"' : " in the register");
-      }
-      /* keep checkboxes in sync with current selection */
-      listEl.querySelectorAll("[data-check]").forEach((cb) => {
-        cb.checked = selected.has(cb.dataset.check);
-      });
-      updateBulkBar();
+      lastResults = await DB.searchStudents(term);
+      paint();
     } catch (err) {
       listEl.innerHTML = UI.emptyState({
         icon: UI.icon("warn"),
@@ -154,23 +175,23 @@
         danger: true,
       });
       if (!ok) return;
-      const undos = [];
-      for (const id of ids) {
-        const res = await DB.removeStudent(id, "Removed from student list");
-        if (res.ok && res.undo) undos.push(res.undo);
-      }
-      selected.clear();
-      updateBulkBar();
-      renderList();
-      if (undos.length) {
-        UI.toast(undos.length + " student" + (undos.length === 1 ? "" : "s") + " removed.", {
+      try {
+        /* one batched request set, whatever the size of the selection */
+        const res = await DB.removeStudents(ids, "Removed from student list");
+        if (!res.ok) { UI.toast(res.message, { type: "error" }); return; }
+        selected.clear();
+        updateBulkBar();
+        renderList();
+        UI.toast(res.count + " student" + (res.count === 1 ? "" : "s") + " removed.", {
           type: "success",
           actionLabel: "Undo",
           onAction: async () => {
-            for (const u of undos) await u();
+            await res.undo();
             renderList();
           },
         });
+      } catch (err) {
+        UI.toast(err.message || "Could not remove those students.", { type: "error" });
       }
       return;
     }
@@ -200,18 +221,18 @@
 
     const desc = vals.description + (vals.date ? " (on " + vals.date + ")" : "");
     const extra = kind === "fine" ? { amount: Number(vals.amount) } : {};
-    let count = 0;
-    for (const id of ids) {
-      await DB.addHistory(id, kind, desc, extra);
-      if (kind === "fine") await DB.setStatus(id, "FINED", { allowDowngrade: false });
-      else await DB.setStatus(id, kind === "warning" ? "WARNING" : "SUSPENDED", { allowDowngrade: false });
-      count++;
+    try {
+      /* history + status for everyone in one batched call */
+      const res = await DB.bulkRecord(ids, kind, desc, extra);
+      selected.clear();
+      updateBulkBar();
+      renderList();
+      UI.toast(label.charAt(0).toUpperCase() + label.slice(1) + " recorded for " +
+        (res.count || ids.length) + " student" + ((res.count || ids.length) === 1 ? "" : "s") + ".",
+        { type: "success" });
+    } catch (err) {
+      UI.toast(err.message || "Could not save. Please try again.", { type: "error" });
     }
-    selected.clear();
-    updateBulkBar();
-    renderList();
-    UI.toast(label.charAt(0).toUpperCase() + label.slice(1) + " recorded for " + count +
-      " student" + (count === 1 ? "" : "s") + ".", { type: "success" });
   }
 
   renderList();

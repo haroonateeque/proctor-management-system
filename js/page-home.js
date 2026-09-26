@@ -118,9 +118,8 @@
         '<span class="ai-sub">' + UI.escapeHtml(f.description) + " · " +
         UI.escapeHtml(UI.formatMoney(f.amount)) + "</span></span>" +
         '<span class="fine-actions">' +
-        '<button class="mini-btn" data-wa="' +
-        encodeURIComponent(f.studentName + "|" + (f.guardianPhone || "") + "|" + (Number(f.amount) || 0) + "|" + f.description) +
-        '" title="Notify guardian on WhatsApp">' + CHAT_ICON + "</button>" +
+        '<button class="mini-btn" data-wa-student="' + f.studentId + '"' +
+        ' data-wa-fine="' + f.id + '" title="Notify guardian on WhatsApp">' + CHAT_ICON + "</button>" +
         '<button class="mini-btn" data-fpaid="' + f.id + '" title="Mark as paid">' + CHECK_ICON + "</button>" +
         "</span></div></li>"
       ).join("") +
@@ -136,21 +135,21 @@
   const finesList = document.getElementById("fines-list");
   if (finesList) {
     finesList.addEventListener("click", (e) => {
-      const waBtn = e.target.closest("[data-wa]");
+      const waBtn = e.target.closest("[data-wa-student]");
       const paidBtn = e.target.closest("[data-fpaid]");
       if (waBtn) {
-        const parts = waBtn.dataset.wa.split("|").map(decodeURIComponent);
-        const name = parts[0], phone = parts[1], amount = parts[2], desc = parts.slice(3).join("|");
-        let digits = String(phone || "").replace(/\D/g, "");
-        if (digits.startsWith("0")) digits = "92" + digits.slice(1);
-        if (!digits) {
-          UI.toast("No guardian phone number saved for this student.", { type: "error" });
-          return;
-        }
-        const msg = "Respected Guardian, a fine of Rs. " +
-          Number(amount).toLocaleString("en-US") + " has been recorded for " + name +
-          " in the proctor register. Reason: " + desc + ". Kindly arrange the payment. Thank you.";
-        window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(msg), "_blank");
+        Promise.all([
+          DB.getStudentById(waBtn.dataset.waStudent),
+          DB.getHistoryEntry(waBtn.dataset.waFine),
+        ]).then(async ([stu, fine]) => {
+          if (!stu || !fine) return;
+          try {
+            const res = await DB.notifyGuardianOnWhatsApp(stu, fine);
+            if (!res.ok) UI.toast(res.message, { type: "error" });
+          } catch (err) {
+            UI.toast("Could not open WhatsApp.", { type: "error" });
+          }
+        }).catch(() => {});
         return;
       }
       if (paidBtn) {

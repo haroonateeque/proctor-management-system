@@ -70,7 +70,27 @@ const UI = (() => {
     }
     setTimeout(kill, ms);
   }
-/* ---------- confirmations (requirement 9) ---------- */
+  /* ---------- confirmations (requirement 9) ---------- */
+  /* Shared dialog behaviour: Escape cancels, the Tab key cycles
+     inside the dialog only, and a click on the dark backdrop closes. */
+  function watchDialog(overlay, close) {
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+    overlay.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+      if (e.key !== "Tab") return;
+      const items = overlay.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+  }
+
   function confirmDialog(opts) {
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
@@ -86,15 +106,13 @@ const UI = (() => {
         "</div></div>";
       document.body.appendChild(overlay);
       overlay.querySelector('[data-act="ok"]').focus();
-      const close = (v) => { overlay.remove(); resolve(v); };
+      let done = false;
+      const close = (v) => { if (done) return; done = true; overlay.remove(); resolve(v); };
+      watchDialog(overlay, () => close(false));
       overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) close(false);
         const act = e.target.closest("[data-act]");
         if (act && act.dataset.act === "cancel") close(false);
         if (act && act.dataset.act === "ok") close(true);
-      });
-      document.addEventListener("keydown", function esc(ev) {
-        if (ev.key === "Escape") { document.removeEventListener("keydown", esc); close(false); }
       });
     });
   }
@@ -138,7 +156,9 @@ const UI = (() => {
       document.body.appendChild(overlay);
       const first = overlay.querySelector("input, select, textarea");
       if (first) first.focus();
-      const close = (v) => { overlay.remove(); resolve(v); };
+      let done = false;
+      const close = (v) => { if (done) return; done = true; overlay.remove(); resolve(v); };
+      watchDialog(overlay, () => close(null));
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) close(null);
         const act = e.target.closest("[data-act]");
@@ -206,11 +226,8 @@ const UI = (() => {
   }
 
   /* ---------- page chrome (top bar + mobile bottom nav).
-     Pass null to skip chrome on drill-down pages that have
-     their own back-button header. ---------- */
-  /* ---------- page chrome (top bar + mobile bottom nav).
-     Pass null to skip chrome on drill-down pages that have
-     their own back-button header. ---------- */
+      Pass null to skip chrome on drill-down pages that have
+      their own back-button header. ---------- */
   function buildChrome(active) {
     if (!active) return;
     const top = document.createElement("div");
@@ -265,7 +282,9 @@ const UI = (() => {
 
 
 /* ---------- PWA: offline support (registered on every page) ---------- */
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+if ('serviceWorker' in navigator &&
+    (location.protocol === 'https:' || location.hostname === 'localhost' ||
+     location.hostname === '127.0.0.1')) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('sw.js').catch(function () {});
   });

@@ -116,11 +116,21 @@ const Excel = (() => {
 
   /* Turn spreadsheet rows into clean student entries.
      - newStudents: ready to be added
+     - updates:     rows that change students already in the register
+                    (only when opts.mode is "update")
      - alreadyCount: students that are already in the system
-     - issues: rows with problems, explained in plain language */
-  function buildImport(rows, mapping, existingIds) {
-    const existing = new Set((existingIds || []).map(idKey));
+     - issues:      rows with problems, explained in plain language
+     existing can be a list of student objects (preferred) or plain
+     student_id strings — anything with a match counts as existing. */
+  function buildImport(rows, mapping, existing, opts) {
+    const mode = opts && opts.mode === "update" ? "update" : "new";
+    const byKey = new Map();
+    (existing || []).forEach((e) => {
+      if (e && typeof e === "object") byKey.set(idKey(e.student_id), e);
+      else byKey.set(idKey(e), null);
+    });
     const newStudents = [];
+    const updates = [];
     const issues = [];
     const seen = new Set();
     let alreadyCount = 0;
@@ -148,7 +158,26 @@ const Excel = (() => {
         return;
       }
       seen.add(key);
-      if (existing.has(key)) { alreadyCount++; return; }
+      if (byKey.has(key)) {
+        alreadyCount++;
+        const hit = byKey.get(key);
+        if (mode === "update" && hit && !hit.removed && idKey(hit.student_id) === key) {
+          /* only cells the sheet actually filled in, and only when
+             the value really differs — student_id itself is never changed */
+          const changes = {};
+          Object.keys(LABELS).forEach((f) => {
+            if (f === "student_id") return;
+            const v = get(f);
+            if (!v) return;
+            const cur = String(hit[f] == null ? "" : hit[f]).trim().replace(/\s+/g, " ");
+            if (v !== cur) changes[f] = v;
+          });
+          if (Object.keys(changes).length) {
+            updates.push({ id: hit.id, changes, name: hit.name, student_id: hit.student_id });
+          }
+        }
+        return;
+      }
 
       newStudents.push({
         name,
@@ -170,8 +199,43 @@ const Excel = (() => {
       });
     });
 
-    return { newStudents, alreadyCount, issues };
+    return { newStudents, updates, alreadyCount, issues };
   }
 
-  return { LABELS, REQUIRED, ALIASES, detectColumns, readFile, buildImport };
+  /* A blank spreadsheet with every column the app understands —
+     so a class rep can fill it in without guessing headers. */
+  function downloadTemplate() {
+    const EXAMPLES = {
+      name: "Ahmed Ali",
+      student_id: "FA21-BCS-001",
+      class_name: "BS Computer Science",
+      section: "A",
+      department: "Computing",
+      semester: "4",
+      phone: "03001234567",
+      email: "ahmed@example.com",
+      father_name: "Muhammad Ali",
+      guardian_phone: "03007654321",
+      blood_group: "B+",
+      hostel: "Hostel",
+      dob: "2003-05-14",
+      cnic: "35202-1234567-1",
+      address: "12 Main Street, Lahore",
+      notes: "",
+    };
+    const fields = Object.keys(LABELS);
+    const aoa = [
+      fields.map((f) => LABELS[f]),
+      fields.map((f) => EXAMPLES[f] || ""),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = fields.map((f) => ({
+      wch: Math.max(14, String(EXAMPLES[f] || LABELS[f]).length + 3),
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Students");
+    XLSX.writeFile(wb, "student-list-template.xlsx");
+  }
+
+  return { LABELS, REQUIRED, ALIASES, detectColumns, readFile, buildImport, downloadTemplate };
 })();

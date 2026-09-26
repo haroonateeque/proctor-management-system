@@ -212,17 +212,12 @@
     if (waBtn) {
       const fine = currentHistory.find((x) => x.id === waBtn.dataset.waFine);
       if (!fine) return;
-      let digits = String((student && student.guardian_phone) || "").replace(/\D/g, "");
-      if (digits.startsWith("0")) digits = "92" + digits.slice(1);
-      if (!digits) {
-        UI.toast("No guardian phone number saved for this student — add one via Edit first.", { type: "error" });
-        return;
+      try {
+        const res = await DB.notifyGuardianOnWhatsApp(student, fine);
+        if (!res.ok) UI.toast(res.message, { type: "error" });
+      } catch (err) {
+        UI.toast("Could not open WhatsApp.", { type: "error" });
       }
-      const msg = "Respected Guardian, a fine of Rs. " +
-        Number(fine.amount || 0).toLocaleString("en-US") +
-        " has been recorded for " + student.name + " (ID: " + student.student_id + ")." +
-        " Reason: " + fine.description + ". Kindly arrange the payment. Thank you.";
-      window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(msg), "_blank");
       return;
     }
 

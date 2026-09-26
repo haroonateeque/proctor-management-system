@@ -8,7 +8,6 @@
   <link rel="manifest" href="manifest.webmanifest">
   <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <title>Add from Excel — Proctor Register</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -34,6 +33,9 @@
         <input type="file" id="file-input" class="hidden-input" accept=".xlsx,.xls,.csv">
       </div>
       <div class="form-error" id="file-error" style="margin-top:14px"></div>
+      <div class="form-actions" style="margin-top:4px">
+        <button type="button" class="btn btn-secondary" id="template-btn">Download a Blank Template</button>
+      </div>
       <div class="info-card">
         Your file should have columns for at least the <strong>student name</strong> and
         <strong>student ID</strong>. The app reads the file on your device only —
@@ -44,6 +46,7 @@
     <!-- STEP 2: check before adding -->
     <section id="panel-2" hidden>
       <div id="map-zone"></div>
+      <div id="mode-zone"></div>
       <div class="summary-box" id="preview-summary"></div>
       <div class="card">
         <h3 style="margin-bottom:10px">First few students found in the file</h3>
@@ -64,8 +67,8 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="vendor/xlsx.full.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/db.js"></script>

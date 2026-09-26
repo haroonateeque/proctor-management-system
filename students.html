@@ -8,7 +8,6 @@
   <link rel="manifest" href="manifest.webmanifest">
   <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <title>Students — Proctor Register</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -16,7 +15,7 @@
     <div class="search-wrap">
       <div class="search-box">
         <span class="search-icon" id="ic-search"></span>
-        <input type="search" id="search" placeholder="Search by name or student ID…"
+        <input type="search" id="search" placeholder="Search by name, ID, phone or CNIC…"
                autocomplete="off" aria-label="Search students">
       </div>
       <div class="search-results" id="search-results"></div>
@@ -52,7 +51,7 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="vendor/supabase.js"></script>
   <script src="js/config.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/db.js"></script>

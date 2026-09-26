@@ -15,6 +15,41 @@
     el.innerHTML = UI.icon(el.dataset.icon);
   });
 
+  /* ---------- WhatsApp country code + message template ---------- */
+
+  const waCode = $("wa-code");
+  const waTpl = $("wa-template");
+  const waPrev = $("wa-preview");
+
+  function paintWaPreview() {
+    const sample = DB.waMessage(waTpl.value, {
+      name: "Ahmed Ali", id: "FA21-BCS-001", amount: "500", reason: "Late to class",
+    });
+    waPrev.textContent = "Preview: " + sample;
+  }
+
+  try {
+    waCode.value = await DB.getSetting("wa_country_code", "92");
+    waTpl.value = await DB.getSetting("wa_template", DB.DEFAULT_WA_TEMPLATE);
+  } catch (err) { /* defaults stay in the boxes */ }
+  paintWaPreview();
+  waTpl.addEventListener("input", paintWaPreview);
+
+  $("wa-save").addEventListener("click", async () => {
+    try {
+      const code = String(waCode.value || "").replace(/\D/g, "") || "92";
+      const tpl = String(waTpl.value || "").trim() || DB.DEFAULT_WA_TEMPLATE;
+      await DB.setSetting("wa_country_code", code);
+      await DB.setSetting("wa_template", tpl);
+      waCode.value = code;
+      waTpl.value = tpl;
+      paintWaPreview();
+      UI.toast("WhatsApp settings saved.", { type: "success" });
+    } catch (err) {
+      UI.toast("Could not save WhatsApp settings.", { type: "error" });
+    }
+  });
+
   /* ---------- dark mode toggle ---------- */
   const themeSub = $("theme-sub");
   function paintTheme() {
@@ -107,6 +142,7 @@
     const rows = past.map((p) =>
       '<div class="preview-item"><div class="pv-name">' + UI.formatDate(p.when) + "</div>" +
       '<div class="pv-meta">' + p.added + " added" +
+      (p.updated ? " · " + p.updated + " updated" : "") +
       (p.skipped ? " · " + p.skipped + " skipped" : "") +
       (p.names && p.names.length ? " — " + UI.escapeHtml(p.names.slice(0, 8).join(", ")) +
         (p.names.length > 8 ? " …" : "") : "") +

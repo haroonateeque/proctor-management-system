@@ -22,6 +22,32 @@ const DB = (() => {
     session: "proctor_session",
   };
 
+  /* Safe localStorage helpers: a corrupted or full store must never
+     break the app — worst case we fall back to the default value. */
+  function lsGet(key, fallback) {
+    try {
+      const raw = LS.getItem(key);
+      if (raw == null) return fallback;
+      return JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function lsSet(key, value) {
+    try { LS.setItem(key, JSON.stringify(value)); } catch (e) { /* storage full or blocked */ }
+  }
+
+  /* Status seriousness — kept here so this module never depends on
+     the UI module (script order can then never break the app). */
+  const SEVERITY = { ACTIVE: 0, WARNING: 1, FINED: 2, SUSPENDED: 3, EXPELLED: 4 };
+  function isMoreSerious(newStatus, currentStatus) {
+    return (SEVERITY[newStatus] || 0) > (SEVERITY[currentStatus] || 0);
+  }
+  /* History record type → the status it stands for. */
+  const TYPE_TO_STATUS = {
+    fine: "FINED", warning: "WARNING", suspension: "SUSPENDED", expulsion: "EXPELLED",
+  };
+
   const CONNECTED = !!(typeof SUPABASE_URL === "string" && SUPABASE_URL &&
     typeof SUPABASE_ANON_KEY === "string" && SUPABASE_ANON_KEY);
 
@@ -60,22 +86,29 @@ const DB = (() => {
         ? { email: data.session.user.email, id: data.session.user.id }
         : null;
     }
-    return JSON.parse(LS.getItem(K.session) || "null");
+    return lsGet(K.session, null);
   }
 
   /* The signed-in proctor's Supabase user id. Every saved row is
      tagged with it and every read is filtered by it, so each
      proctor only ever sees their own register — never anyone
-     else's students, history, or settings. */
+     else's students, history, or settings. The e-mail is kept
+     alongside so history rows can record who made each entry. */
   let cachedUid = null;
+  let cachedEmail = "";
   let uidFetched = false;
-  async function currentUid() {
+  async function currentUser() {
     if (!CONNECTED) return null;
-    if (uidFetched) return cachedUid;
+    if (uidFetched) return { id: cachedUid, email: cachedEmail };
     const { data } = await sb.auth.getSession();
     cachedUid = data && data.session ? data.session.user.id : null;
+    cachedEmail = data && data.session ? (data.session.user.email || "") : "";
     uidFetched = true;
-    return cachedUid;
+    return { id: cachedUid, email: cachedEmail };
+  }
+  async function currentUid() {
+    const u = await currentUser();
+    return u ? u.id : null;
   }
 
   async function signIn(email, password) {
@@ -112,6 +145,10 @@ const DB = (() => {
   async function signOut() {
     if (CONNECTED) { try { await sb.auth.signOut(); } catch (e) { /* ignore */ } }
     LS.removeItem(K.session);
+    cachedUid = null;
+    cachedEmail = "";
+    uidFetched = false;
+    invalidateStudents();
     /* belt-and-braces: wipe Supabase's own cached session keys so a
        slow/blocked sign-out request can never leave a live token behind */
     try {
@@ -151,38 +188,57 @@ const DB = (() => {
     return base;
   }
 
+  /* One shared read of the whole student table, kept in memory for a
+     short time. Search, duplicate checks and counts all reuse it, so
+     typing in the search box no longer downloads the register again
+     on every keystroke. Every write throws the cache away, and a
+     30-second life keeps other devices from appearing stale for long. */
+  const CACHE_TTL_MS = 30000;
+  let sCache = { rows: null, at: 0 };
+  function invalidateStudents() { sCache = { rows: null, at: 0 }; }
+
+  async function allStudentRows() {
+    if (sCache.rows && Date.now() - sCache.at < CACHE_TTL_MS) return sCache.rows;
+    let rows;
+    if (CONNECTED) {
+      const uid = await currentUid();
+      const { data, error } = await sb.from("students").select("*")
+        .eq("owner_id", uid).order("name");
+      if (error) throw new Error(friendlyMessage(error));
+      rows = data || [];
+    } else {
+      rows = lsGet(K.students, []);
+    }
+    sCache = { rows, at: Date.now() };
+    return rows;
+  }
+
   async function getStudents(opts) {
     opts = opts || {};
     const includeRemoved = !!opts.includeRemoved;
-    if (CONNECTED) {
-      const uid = await currentUid();
-      let q = sb.from("students").select("*").eq("owner_id", uid).order("name");
-      if (!includeRemoved) q = q.eq("removed", false);
-      const { data, error } = await q;
-      if (error) throw new Error(friendlyMessage(error));
-      return (data || []).map(cleanStudent);
-    }
-    const all = JSON.parse(LS.getItem(K.students) || "[]").map(cleanStudent);
-    return includeRemoved ? all : all.filter((s) => !s.removed);
+    const cleaned = (await allStudentRows()).map(cleanStudent);
+    const list = includeRemoved ? cleaned : cleaned.filter((s) => !s.removed);
+    list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return list;
   }
 
   async function getStudentById(id) {
     if (!id) return null;
-    if (CONNECTED) {
-      const uid = await currentUid();
-      const { data, error } = await sb.from("students").select("*")
-        .eq("owner_id", uid).eq("id", id).maybeSingle();
-      if (error) throw new Error(friendlyMessage(error));
-      return data ? cleanStudent(data) : null;
-    }
-    const all = JSON.parse(LS.getItem(K.students) || "[]");
-    return cleanStudent(all.find((s) => s.id === id) || {});
+    const rows = await allStudentRows();
+    const found = rows.find((s) => s.id === id);
+    return found ? cleanStudent(found) : null;
   }
 
   /* Forgiving duplicate check (requirement 6): case and spacing
      are ignored, so "A12- 345" and "a12345" count as the same. */
   function idKey(v) {
     return String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  /* Digits only — so phone numbers match regardless of spaces,
+     dashes or a missing country code. */
+  function digitsOnly(v) {
+    return String(v || "").replace(/\D/g, "");
   }
 
   async function findStudentByStudentId(studentId) {
@@ -195,11 +251,23 @@ const DB = (() => {
     const norm = String(term || "").toLowerCase().replace(/\s+/g, " ").trim();
     const all = await getStudents();
     if (!norm) return all;
+    /* Numbers are compared on digits only: "0300 1234567",
+       "0300-1234567" and "03001234567" all hit the same student. */
+    const qDigits = digitsOnly(norm);
     return all.filter((s) => {
       const name = s.name.toLowerCase();
       const sid = s.student_id.toLowerCase();
       /* Partial matches on both name and ID (requirement 8) */
       if (name.includes(norm) || sid.includes(norm) || idKey(s.student_id).includes(idKey(norm))) return true;
+      /* phone / guardian phone / CNIC / e-mail — parents often call
+         with just a number, so those must be searchable too */
+      if (norm.length >= 3 && (
+        String(s.cnic).toLowerCase().includes(norm) ||
+        String(s.email).toLowerCase().includes(norm))) return true;
+      if (qDigits.length >= 3 && (
+        digitsOnly(s.phone).includes(qDigits) ||
+        digitsOnly(s.guardian_phone).includes(qDigits) ||
+        digitsOnly(s.cnic).includes(qDigits))) return true;
       const words = norm.split(" ").filter(Boolean);
       if (words.length > 1) {
         return words.every((w) => name.includes(w) || sid.includes(w));
@@ -253,12 +321,14 @@ const DB = (() => {
       s.owner_id = await currentUid();
       const { error } = await sb.from("students").upsert(s);
       if (error) throw new Error(friendlyMessage(error));
+      invalidateStudents();
       return;
     }
-    const all = JSON.parse(LS.getItem(K.students) || "[]");
+    const all = lsGet(K.students, []);
     const i = all.findIndex((x) => x.id === s.id);
     if (i >= 0) all[i] = s; else all.push(s);
-    LS.setItem(K.students, JSON.stringify(all));
+    lsSet(K.students, all);
+    invalidateStudents();
   }
   /* =============================================================
      STATUS + DISCIPLINE ACTIONS (fine / warning / suspension …)
@@ -270,7 +340,7 @@ const DB = (() => {
     opts = opts || {};
     const s = await getStudentById(studentId);
     if (!s) return { ok: false, message: "This student could not be found." };
-    const downgrade = !UI.isMoreSerious(newStatus, s.status);
+    const downgrade = !isMoreSerious(newStatus, s.status);
     if (downgrade && !opts.allowDowngrade) {
       return { ok: true, student: s, unchanged: true };
     }
@@ -283,26 +353,175 @@ const DB = (() => {
      REMOVAL (soft delete) + UNDO (requirement 11)
      ============================================================= */
 
-  async function removeStudent(studentId, reason) {
-    const s = await getStudentById(studentId);
-    if (!s) return { ok: false, message: "This student could not be found." };
-    const snapshot = cleanStudent(s);
-    const res = await updateStudent(studentId, {
+  /* Remove one or many students in a couple of batch requests
+     instead of two round-trips per student. Returns a single undo
+     that restores every record exactly as it was. */
+  async function removeStudents(ids, reason) {
+    const list = (ids || []).filter(Boolean);
+    if (!list.length) return { ok: false, message: "No students were selected." };
+
+    const rows = await allStudentRows();
+    const snapshots = list
+      .map((id) => rows.find((r) => r.id === id))
+      .filter(Boolean)
+      .map(cleanStudent);
+    if (!snapshots.length) return { ok: false, message: "These students could not be found." };
+
+    const noteText = "Removed from register" + (reason ? " — " + reason : "") +
+      " on " + new Date().toLocaleDateString("en-US");
+    const histText = "Removed from the register" + (reason ? " — " + reason : "") + ".";
+    const stamp = new Date().toISOString();
+    const updated = snapshots.map((s) => ({
+      ...s,
       removed: true,
-      notes: (s.notes ? s.notes + " | " : "") +
-        "Removed from register" + (reason ? " — " + reason : "") +
-        " on " + new Date().toLocaleDateString("en-US"),
-    });
-    if (!res.ok) return res;
-    await addHistory(studentId, "note",
-      "Removed from the register" + (reason ? " — " + reason : "") + ".", null);
-    /* Undo restores the exact previous record. */
+      notes: (s.notes ? s.notes + " | " : "") + noteText,
+      updated_at: stamp,
+    }));
+
+    if (CONNECTED) {
+      const u = await currentUser();
+      for (const part of chunk(updated, 200)) {
+        const { error } = await sb.from("students")
+          .upsert(part.map((s) => ({ ...s, owner_id: u.id })));
+        if (error) throw new Error(friendlyMessage(error));
+      }
+      for (const part of chunk(snapshots, 500)) {
+        const { error } = await sb.from("history").insert(part.map((s) => ({
+          student_id: s.id, type: "note", description: histText,
+          owner_id: u.id, created_by: u.email || "",
+        })));
+        if (error) throw new Error(friendlyMessage(error));
+      }
+    } else {
+      const all = lsGet(K.students, []);
+      const byId = new Map(updated.map((s) => [s.id, s]));
+      all.forEach((s, i) => { if (byId.has(s.id)) all[i] = byId.get(s.id); });
+      lsSet(K.students, all);
+      const hist = lsGet(K.history, []);
+      snapshots.forEach((s) => hist.push({
+        id: newId(), student_id: s.id, type: "note",
+        description: histText, created_at: stamp,
+      }));
+      lsSet(K.history, hist);
+    }
+    invalidateStudents();
+
+    /* Undo restores the exact previous records. */
     const undo = async () => {
-      const restored = cleanStudent({ ...snapshot, removed: false });
-      await saveStudentRow(restored);
-      await addHistory(studentId, "note", "Returned to the register (removal undone).", null);
+      if (CONNECTED) {
+        const u = await currentUser();
+        for (const part of chunk(snapshots, 200)) {
+          const { error } = await sb.from("students")
+            .upsert(part.map((s) => ({ ...s, owner_id: u.id })));
+          if (error) throw new Error(friendlyMessage(error));
+        }
+        for (const part of chunk(snapshots, 500)) {
+          const { error } = await sb.from("history").insert(part.map((s) => ({
+            student_id: s.id, type: "note",
+            description: "Returned to the register (removal undone).",
+            owner_id: u.id, created_by: u.email || "",
+          })));
+          if (error) throw new Error(friendlyMessage(error));
+        }
+      } else {
+        const all = lsGet(K.students, []);
+        const byId = new Map(snapshots.map((s) => [s.id, s]));
+        all.forEach((s, i) => { if (byId.has(s.id)) all[i] = byId.get(s.id); });
+        lsSet(K.students, all);
+        const hist = lsGet(K.history, []);
+        snapshots.forEach((s) => hist.push({
+          id: newId(), student_id: s.id, type: "note",
+          description: "Returned to the register (removal undone).",
+          created_at: new Date().toISOString(),
+        }));
+        lsSet(K.history, hist);
+      }
+      invalidateStudents();
     };
-    return { ok: true, student: res.student, undo };
+
+    return {
+      ok: true,
+      count: snapshots.length,
+      student: snapshots.length === 1 ? cleanStudent(updated[0]) : null,
+      undo,
+    };
+  }
+
+  async function removeStudent(studentId, reason) {
+    return removeStudents([studentId], reason);
+  }
+
+  /* Record a fine / warning / suspension for many students at once:
+     history rows go in as batched inserts and statuses are only ever
+     raised (never lowered) in one batched update. */
+  async function bulkRecord(ids, type, description, extra) {
+    const list = (ids || []).filter(Boolean);
+    if (!list.length) return { ok: false, count: 0 };
+
+    const amount = extra && extra.amount != null ? Number(extra.amount) : null;
+    const paid = !!(extra && extra.paid);
+    const stamp = new Date().toISOString();
+
+    if (CONNECTED) {
+      const u = await currentUser();
+      for (const part of chunk(list, 500)) {
+        const rows = part.map((id) => {
+          const row = {
+            student_id: id, type, description,
+            owner_id: u.id, created_by: u.email || "",
+          };
+          if (amount != null) row.amount = amount;
+          if (paid) row.paid = true;
+          return row;
+        });
+        const { error } = await sb.from("history").insert(rows);
+        if (error) throw new Error(friendlyMessage(error));
+      }
+    } else {
+      const hist = lsGet(K.history, []);
+      list.forEach((id) => hist.push({
+        id: newId(), student_id: id, type, description,
+        amount, paid, created_by: "", created_at: stamp,
+      }));
+      lsSet(K.history, hist);
+    }
+
+    /* Raise the status of anyone still below this record's seriousness. */
+    const target = TYPE_TO_STATUS[type];
+    if (target) {
+      const rows = await allStudentRows();
+      const raise = list.filter((id) => {
+        const s = rows.find((r) => r.id === id);
+        return s && isMoreSerious(target, String(s.status || "ACTIVE").toUpperCase());
+      });
+      if (raise.length) await setStatuses(raise, target);
+    }
+    invalidateStudents();
+    return { ok: true, count: list.length };
+  }
+
+  /* One batched status change for a list of students. */
+  async function setStatuses(ids, status) {
+    const list = (ids || []).filter(Boolean);
+    if (!list.length) return;
+    const stamp = new Date().toISOString();
+    if (CONNECTED) {
+      const uid = await currentUid();
+      for (const part of chunk(list, 200)) {
+        const { error } = await sb.from("students")
+          .update({ status, updated_at: stamp })
+          .eq("owner_id", uid).in("id", part);
+        if (error) throw new Error(friendlyMessage(error));
+      }
+    } else {
+      const all = lsGet(K.students, []);
+      const set = new Set(list);
+      all.forEach((s) => {
+        if (set.has(s.id)) { s.status = status; s.updated_at = stamp; }
+      });
+      lsSet(K.students, all);
+    }
+    invalidateStudents();
   }
 
   /* =============================================================
@@ -322,16 +541,18 @@ const DB = (() => {
       created_at: new Date().toISOString(),
     };
     if (CONNECTED) {
+      const u = await currentUser();
       const row = { student_id: entry.student_id, type: entry.type, description: entry.description };
       if (entry.amount != null) row.amount = entry.amount;
       if (entry.paid) row.paid = true;
-      row.owner_id = await currentUid();
+      row.owner_id = u ? u.id : null;
+      row.created_by = entry.created_by || (u && u.email) || "";
       const { error } = await sb.from("history").insert(row);
       if (error) throw new Error(friendlyMessage(error));
     } else {
-      const all = JSON.parse(LS.getItem(K.history) || "[]");
+      const all = lsGet(K.history, []);
       all.push(entry);
-      LS.setItem(K.history, JSON.stringify(all));
+      lsSet(K.history, all);
     }
     return entry;
   }
@@ -345,7 +566,7 @@ const DB = (() => {
       if (error) throw new Error(friendlyMessage(error));
       return data || [];
     }
-    const all = JSON.parse(LS.getItem(K.history) || "[]");
+    const all = lsGet(K.history, []);
     return all.filter((h) => h.student_id === studentId)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
@@ -356,23 +577,29 @@ const DB = (() => {
         .eq("owner_id", uid).eq("id", historyId).maybeSingle();
       return data || null;
     }
-    const all = JSON.parse(LS.getItem(K.history) || "[]");
+    const all = lsGet(K.history, []);
     return all.find((h) => h.id === historyId) || null;
   }
 
-  /* Mark a fine as paid — never deleted, so the record stays honest. */
+  /* Mark a fine as paid — never deleted, so the record stays honest.
+     The status is recalculated afterwards, the same way it is when a
+     fine is removed, so a student is no longer flagged FINED once
+     everything outstanding has been settled. */
   async function markFinePaid(historyId) {
     const entry = await getHistoryEntry(historyId);
     if (!entry || entry.type !== "fine") return { ok: false, message: "This fine could not be found." };
     if (entry.paid) return { ok: true };
     if (CONNECTED) {
-      const { error } = await sb.from("history").update({ paid: true }).eq("id", historyId);
+      const uid = await currentUid();
+      const { error } = await sb.from("history").update({ paid: true })
+        .eq("id", historyId).eq("owner_id", uid);
       if (error) throw new Error(friendlyMessage(error));
     } else {
-      const all = JSON.parse(LS.getItem(K.history) || "[]");
+      const all = lsGet(K.history, []);
       const i = all.findIndex((h) => h.id === historyId);
-      if (i >= 0) { all[i].paid = true; LS.setItem(K.history, JSON.stringify(all)); }
+      if (i >= 0) { all[i].paid = true; lsSet(K.history, all); }
     }
+    await recalcStatusFromHistory(entry.student_id);
     return { ok: true };
   }
 
@@ -385,8 +612,8 @@ const DB = (() => {
       const { error } = await sb.from("history").delete().eq("id", historyId);
       if (error) throw new Error(friendlyMessage(error));
     } else {
-      const all = JSON.parse(LS.getItem(K.history) || "[]");
-      LS.setItem(K.history, JSON.stringify(all.filter((h) => h.id !== historyId)));
+      const all = lsGet(K.history, []);
+      lsSet(K.history, all.filter((h) => h.id !== historyId));
     }
     await recalcStatusFromHistory(entry.student_id);
     await addHistory(entry.student_id, "note", "Fine of " + (entry.amount ? "Rs. " + entry.amount : "") + " removed by mistake correction.", null);
@@ -399,7 +626,10 @@ const DB = (() => {
     const active = hist.filter((h) => !h.paid && h.type !== "note");
     let status = "ACTIVE";
     for (const h of active) {
-      if (UI.isMoreSerious(h.type.toUpperCase(), status)) status = h.type.toUpperCase();
+      /* history types are lowercase (fine), statuses are uppercase
+         (FINED) — map through TYPE_TO_STATUS so fines count too */
+      const st = TYPE_TO_STATUS[h.type] || String(h.type || "").toUpperCase();
+      if (isMoreSerious(st, status)) status = st;
     }
     const s = await getStudentById(studentId);
     if (s && s.status !== status) {
@@ -421,7 +651,7 @@ const DB = (() => {
     return out;
   }
 
-  async function bulkAddStudents(list) {
+  async function bulkAddStudents(list, opts) {
     const stamp = new Date().toISOString();
     const added = list.map((s) => {
       const row = cleanStudent(s);
@@ -434,11 +664,11 @@ const DB = (() => {
     });
 
     if (CONNECTED) {
-      const uid = await currentUid();
+      const u = await currentUser();
       let done = 0;
       try {
         for (const part of chunk(added, 200)) {
-          const { error } = await sb.from("students").upsert(part.map((s) => ({ ...s, owner_id: uid })));
+          const { error } = await sb.from("students").upsert(part.map((s) => ({ ...s, owner_id: u.id })));
           if (error) throw new Error(friendlyMessage(error));
           done += part.length;
         }
@@ -447,19 +677,22 @@ const DB = (() => {
             student_id: s.id,
             type: "note",
             description: "Added to the register.",
-            owner_id: uid,
+            owner_id: u.id,
+            created_by: u.email || "",
           })));
           if (error) throw new Error(friendlyMessage(error));
         }
       } catch (err) {
+        invalidateStudents();
         if (done > 0) throw new Error(done + " students were added, but then it stopped: " + err.message);
         throw err;
       }
+      invalidateStudents();
     } else {
-      const all = JSON.parse(LS.getItem(K.students) || "[]");
+      const all = lsGet(K.students, []);
       all.push(...added);
-      LS.setItem(K.students, JSON.stringify(all));
-      const hist = JSON.parse(LS.getItem(K.history) || "[]");
+      lsSet(K.students, all);
+      const hist = lsGet(K.history, []);
       hist.push(...added.map((s) => ({
         id: "h_" + newId().slice(3),
         student_id: s.id,
@@ -467,39 +700,133 @@ const DB = (() => {
         description: "Added to the register.",
         created_at: stamp,
       })));
-      LS.setItem(K.history, JSON.stringify(hist));
+      lsSet(K.history, hist);
+      invalidateStudents();
     }
 
-    const summary = {
-      when: stamp,
-      added: added.length,
-      skipped: 0,
-      names: added.slice(0, 50).map((s) => s.name),
-    };
-    const past = await getSetting("import_history", []);
-    past.unshift(summary);
-    await setSetting("import_history", past.slice(0, 20));
+    /* the caller may want to write one combined record itself when an
+       import both adds and updates (pass { record: false }) */
+    if (!(opts && opts.record === false)) {
+      await addImportRecord({
+        when: stamp,
+        added: added.length,
+        updated: 0,
+        skipped: 0,
+        names: added.slice(0, 50).map((s) => s.name),
+      });
+    }
     return { added, skipped: [] };
   }
 
-  /* Undo a whole import: removes exactly the students it added,
-     in two batch requests regardless of how many there were. */
+  /* One row in the "Past Imports" list on the More screen. */
+  async function addImportRecord(summary) {
+    const past = await getSetting("import_history", []);
+    past.unshift({
+      when: (summary && summary.when) || new Date().toISOString(),
+      added: (summary && summary.added) || 0,
+      updated: (summary && summary.updated) || 0,
+      skipped: (summary && summary.skipped) || 0,
+      names: ((summary && summary.names) || []).slice(0, 50),
+    });
+    await setSetting("import_history", past.slice(0, 20));
+  }
+
+  /* Undo a whole import: removes exactly the students it added, in a
+     few batch requests regardless of how many there were. Deletes are
+     chunked too — 1,000+ ids in a single URL would be rejected. */
   async function undoBulkAdd(addedStudents) {
     const ids = (addedStudents || []).map((s) => s.id).filter(Boolean);
     if (!ids.length) return 0;
     if (CONNECTED) {
-      const hist = await sb.from("history").delete().in("student_id", ids);
-      if (hist.error) throw new Error(friendlyMessage(hist.error));
-      const del = await sb.from("students").delete().in("id", ids);
-      if (del.error) throw new Error(friendlyMessage(del.error));
+      for (const part of chunk(ids, 200)) {
+        const hist = await sb.from("history").delete().in("student_id", part);
+        if (hist.error) throw new Error(friendlyMessage(hist.error));
+        const del = await sb.from("students").delete().in("id", part);
+        if (del.error) throw new Error(friendlyMessage(del.error));
+      }
+      invalidateStudents();
       return ids.length;
     }
     const idSet = new Set(ids);
-    const all = JSON.parse(LS.getItem(K.students) || "[]");
-    LS.setItem(K.students, JSON.stringify(all.filter((x) => !idSet.has(x.id))));
-    const histL = JSON.parse(LS.getItem(K.history) || "[]");
-    LS.setItem(K.history, JSON.stringify(histL.filter((h) => !idSet.has(h.student_id))));
+    const all = lsGet(K.students, []);
+    lsSet(K.students, all.filter((x) => !idSet.has(x.id)));
+    const histL = lsGet(K.history, []);
+    lsSet(K.history, histL.filter((h) => !idSet.has(h.student_id)));
+    invalidateStudents();
     return ids.length;
+  }
+
+  /* Excel import, "update existing" mode: applies {changes} to each
+     student. Returns snapshots of the rows exactly as they were, so
+     the whole import can be undone in one go. No history entries are
+     written per student — the import is recorded as one line instead. */
+  async function bulkUpdateStudents(updates) {
+    const list = (updates || []).filter((u) => u && u.id && u.changes && Object.keys(u.changes).length);
+    if (!list.length) return { updated: 0, snapshots: [], rows: [] };
+    const stamp = new Date().toISOString();
+    const snapshots = [];
+    let rows = [];
+
+    if (CONNECTED) {
+      const u = await currentUid();
+      const wanted = list.map((x) => x.id);
+      const have = new Map();
+      for (const part of chunk(wanted, 200)) {
+        const { data, error } = await sb.from("students").select("*")
+          .eq("owner_id", u.id).in("id", part);
+        if (error) throw new Error(friendlyMessage(error));
+        (data || []).forEach((s) => have.set(s.id, s));
+      }
+      list.forEach((x) => {
+        const cur = have.get(x.id);
+        if (!cur) return;
+        snapshots.push({ ...cur });
+        rows.push({ ...cur, ...x.changes, updated_at: stamp });
+      });
+      for (const part of chunk(rows, 200)) {
+        const { error } = await sb.from("students")
+          .upsert(part.map((s) => ({ ...s, owner_id: u.id })));
+        if (error) throw new Error(friendlyMessage(error));
+      }
+      invalidateStudents();
+    } else {
+      const all = lsGet(K.students, []);
+      const byId = new Map(all.map((s) => [s.id, s]));
+      const mergedMap = new Map();
+      list.forEach((x) => {
+        const cur = byId.get(x.id);
+        if (!cur) return;
+        snapshots.push({ ...cur });
+        const merged = { ...cur, ...x.changes, updated_at: stamp };
+        mergedMap.set(cur.id, merged);
+      });
+      rows = Array.from(mergedMap.values());
+      lsSet(K.students, all.map((s) => mergedMap.get(s.id) || s));
+      invalidateStudents();
+    }
+
+    return { updated: rows.length, snapshots, rows };
+  }
+
+  /* Put back the exact rows a bulk update replaced (import undo). */
+  async function restoreStudentRows(snapshots) {
+    const list = (snapshots || []).filter((s) => s && s.id);
+    if (!list.length) return 0;
+    if (CONNECTED) {
+      const u = await currentUid();
+      for (const part of chunk(list, 200)) {
+        const { error } = await sb.from("students")
+          .upsert(part.map((s) => ({ ...s, owner_id: u.id })));
+        if (error) throw new Error(friendlyMessage(error));
+      }
+      invalidateStudents();
+      return list.length;
+    }
+    const all = lsGet(K.students, []);
+    const back = new Map(list.map((s) => [s.id, s]));
+    lsSet(K.students, all.map((s) => back.get(s.id) || s));
+    invalidateStudents();
+    return list.length;
   }
 
   /* =============================================================
@@ -517,7 +844,7 @@ const DB = (() => {
       }
       return fallback;
     }
-    const all = JSON.parse(LS.getItem(K.settings) || "{}");
+    const all = lsGet(K.settings, {});
     return all[key] !== undefined ? all[key] : fallback;
   }
 
@@ -528,10 +855,63 @@ const DB = (() => {
       if (error) throw new Error(friendlyMessage(error));
       return;
     }
-    const all = JSON.parse(LS.getItem(K.settings) || "{}");
+    const all = lsGet(K.settings, {});
     all[key] = value;
-    LS.setItem(K.settings, JSON.stringify(all));
+    lsSet(K.settings, all);
   }
+
+  /* =============================================================
+     WHATSAPP GUARDIAN NOTIFICATIONS
+     Country code and wording are proctor settings
+     (More → WhatsApp messages).
+     ============================================================= */
+
+  const DEFAULT_WA_TEMPLATE =
+    "Respected Guardian, a fine of Rs. {amount} has been recorded for {name} (ID: {id}). " +
+    "Reason: {reason}. Kindly arrange the payment. Thank you.";
+
+  /* Turns whatever the proctor typed (0301…, 301…, +92 301…, 92301…)
+     into a full international number with no + and no spaces. */
+  function waNumber(raw, countryCode) {
+    const code = String(countryCode || "92").replace(/\D/g, "") || "92";
+    let d = String(raw || "").replace(/\D/g, "");
+    if (!d) return "";
+    if (d.charAt(0) === "0") d = code + d.slice(1);
+    else if (d.length <= 10 && d.indexOf(code) !== 0) d = code + d;
+    return d;
+  }
+
+  function waMessage(template, vars) {
+    const v = vars || {};
+    return String(template || DEFAULT_WA_TEMPLATE)
+      .replace(/\{name\}/g, v.name || "")
+      .replace(/\{id\}/g, v.id || "")
+      .replace(/\{amount\}/g, v.amount || "")
+      .replace(/\{reason\}/g, v.reason || "");
+  }
+
+  /* Opens WhatsApp with the message ready to send.
+     student: {name, student_id, guardian_phone}
+     fine:    {amount, description} */
+  async function notifyGuardianOnWhatsApp(student, fine) {
+    const phone = student && student.guardian_phone;
+    if (!phone) {
+      return { ok: false, message: "No guardian phone number saved for this student — add one via Edit first." };
+    }
+    const code = await getSetting("wa_country_code", "92");
+    const template = await getSetting("wa_template", DEFAULT_WA_TEMPLATE);
+    const number = waNumber(phone, code);
+    if (!number) return { ok: false, message: "That guardian phone number doesn't look right." };
+    const msg = waMessage(template, {
+      name: (student && student.name) || "",
+      id: (student && student.student_id) || "",
+      amount: Number((fine && fine.amount) || 0).toLocaleString("en-US"),
+      reason: (fine && fine.description) || "",
+    });
+    window.open("https://wa.me/" + number + "?text=" + encodeURIComponent(msg), "_blank");
+    return { ok: true, number, message: msg };
+  }
+
   /* Recent events across the whole register (home screen feed).
      Joins the student's name so entries can link to the profile. */
   async function getRecentActivity(limit) {
@@ -555,8 +935,8 @@ const DB = (() => {
         studentName: (h.students && h.students.name) || "Unknown student",
       }));
     }
-    const hist = JSON.parse(LS.getItem(K.history) || "[]");
-    const studs = JSON.parse(LS.getItem(K.students) || "[]");
+    const hist = lsGet(K.history, []);
+    const studs = lsGet(K.students, []);
     return hist.slice()
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, max)
@@ -585,8 +965,8 @@ const DB = (() => {
         created_at: h.created_at,
       }));
     }
-    const hist = JSON.parse(LS.getItem(K.history) || "[]");
-    const studs = JSON.parse(LS.getItem(K.students) || "[]");
+    const hist = lsGet(K.history, []);
+    const studs = lsGet(K.students, []);
     return hist
       .filter((h) => h.type === "fine" && !h.paid)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -606,6 +986,31 @@ const DB = (() => {
      ============================================================= */
 
   async function getStats() {
+    if (CONNECTED) {
+      /* Counts come from the database, not from downloading every
+         student row — much quicker on large registers. */
+      const uid = await currentUid();
+      const [act, rem] = await Promise.all([
+        sb.from("students").select("status", { count: "exact" })
+          .eq("owner_id", uid).eq("removed", false),
+        sb.from("students").select("id", { count: "exact", head: true })
+          .eq("owner_id", uid).eq("removed", true),
+      ]);
+      if (act.error) throw new Error(friendlyMessage(act.error));
+      if (rem.error) throw new Error(friendlyMessage(rem.error));
+      const byStatus = { ACTIVE: 0, WARNING: 0, FINED: 0, SUSPENDED: 0, EXPELLED: 0 };
+      (act.data || []).forEach((r) => {
+        const st = String(r.status || "ACTIVE").toUpperCase();
+        byStatus[st] = (byStatus[st] || 0) + 1;
+      });
+      const total = act.count || 0;
+      return {
+        total,
+        removed: rem.count || 0,
+        byStatus,
+        attention: total - (byStatus.ACTIVE || 0),
+      };
+    }
     const all = await getStudents({ includeRemoved: true });
     const active = all.filter((s) => !s.removed);
     const byStatus = { ACTIVE: 0, WARNING: 0, FINED: 0, SUSPENDED: 0, EXPELLED: 0 };
@@ -625,7 +1030,7 @@ const DB = (() => {
       if (error) throw new Error(friendlyMessage(error));
       history = data || [];
     } else {
-      history = JSON.parse(LS.getItem(K.history) || "[]");
+      history = lsGet(K.history, []);
     }
     return {
       app: "Proctor Register",
@@ -685,10 +1090,12 @@ const DB = (() => {
     isTrialMode, isConnected: CONNECTED,
     getSession, signIn, signInWithGoogle, signOut, requireSession,
     getStudents, getStudentById, findStudentByStudentId, searchStudents,
-    addStudent, updateStudent, removeStudent,
+    addStudent, updateStudent, removeStudent, removeStudents,
     setStatus, addHistory, getHistory, markFinePaid, removeFine,
-    bulkAddStudents, undoBulkAdd,
-    getSetting, setSetting, getRecentActivity, getUnpaidFines,
+    bulkAddStudents, undoBulkAdd, bulkRecord,
+    bulkUpdateStudents, restoreStudentRows, addImportRecord,
+    getSetting, setSetting, getRecentActivity, getUnpaidFines, getHistoryEntry,
+    notifyGuardianOnWhatsApp, waNumber, waMessage, DEFAULT_WA_TEMPLATE,
     getStats, exportBackup, studentsToCsv, downloadFile,
   };
 })();

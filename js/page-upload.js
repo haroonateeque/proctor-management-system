@@ -25,7 +25,19 @@
   const fileInput = document.getElementById("file-input");
   const fileError = document.getElementById("file-error");
 
-  let state = { headers: [], rows: [], mapping: null, built: null, added: [], existingIds: null };
+  let state = { headers: [], rows: [], mapping: null, built: null, added: [], existing: null, mode: "new", snapshots: [] };
+
+  const tplBtn = document.getElementById("template-btn");
+  if (tplBtn) {
+    tplBtn.addEventListener("click", () => {
+      try {
+        Excel.downloadTemplate();
+        UI.toast("Template downloaded — fill it in and upload it here.", { type: "success" });
+      } catch (err) {
+        UI.toast("Could not create the template. Please try again.", { type: "error" });
+      }
+    });
+  }
 
   dropZone.addEventListener("click", () => fileInput.click());
   dropZone.addEventListener("keydown", (e) => {
@@ -61,6 +73,10 @@
       }
       state.headers = parsed.headers;
       state.rows = parsed.rows;
+      state.built = null;
+      state.added = [];
+      state.snapshots = [];
+      state.mode = "new";
       const saved = await DB.getSetting("excel_mapping", {});
       state.mapping = Excel.detectColumns(parsed.headers, saved);
       buildMappingPanel();
@@ -115,11 +131,36 @@
   async function buildPreview() {
     /* duplicate-check list is fetched once per file and reused
        whenever the column mapping is adjusted — not per keystroke */
-    if (!state.existingIds) {
-      state.existingIds = (await DB.getStudents({ includeRemoved: true })).map((s) => s.student_id);
+    if (!state.existing) {
+      state.existing = await DB.getStudents({ includeRemoved: true });
     }
-    const built = Excel.buildImport(state.rows, state.mapping, state.existingIds);
+    const built = Excel.buildImport(state.rows, state.mapping, state.existing, { mode: state.mode });
     state.built = built;
+
+    /* how to handle rows already in the register — only worth asking
+       when the file actually overlaps the existing list */
+    const modeZone = document.getElementById("mode-zone");
+    if (built.alreadyCount > 0) {
+      modeZone.innerHTML =
+        '<div class="import-mode">' +
+        '<label class="im-option' + (state.mode === "new" ? " selected" : "") + '">' +
+        '<input type="radio" name="import-mode" value="new"' + (state.mode === "new" ? " checked" : "") + ">" +
+        "<span><strong>Add new students only</strong> — the " + built.alreadyCount +
+        " already in the register are left untouched.</span></label>" +
+        '<label class="im-option' + (state.mode === "update" ? " selected" : "") + '">' +
+        '<input type="radio" name="import-mode" value="update"' + (state.mode === "update" ? " checked" : "") + ">" +
+        "<span><strong>Add new + update existing</strong> — blank cells are kept, " +
+        "filled cells replace what is stored (Student ID never changes).</span></label>" +
+        "</div>";
+      modeZone.querySelectorAll('input[name="import-mode"]').forEach((r) =>
+        r.addEventListener("change", () => {
+          state.mode = r.value;
+          buildPreview();
+        }));
+    } else {
+      modeZone.innerHTML = "";
+      state.mode = "new";
+    }
 
     const summary = document.getElementById("preview-summary");
     const missing = Excel.REQUIRED.filter((f) => !state.mapping[f]);
@@ -128,12 +169,29 @@
         missing.map((f) => Excel.LABELS[f]).join("</strong> and <strong>") +
         "</strong> column" + (missing.length > 1 ? "s" : "") + " above before importing.";
     } else {
-      summary.innerHTML =
-        '<span class="sb-num">' + built.newStudents.length + "</span> new student" +
-        (built.newStudents.length === 1 ? "" : "s") + " will be added" +
-        (built.alreadyCount ? " · " + built.alreadyCount + " already in the register (will be skipped)" : "") +
-        (built.issues.length ? " · " + built.issues.length + " row" + (built.issues.length === 1 ? "" : "s") + " with problems (see below)" : "");
+      const parts = [];
+      parts.push('<span class="sb-num">' + built.newStudents.length + "</span> new student" +
+        (built.newStudents.length === 1 ? "" : "s") + " will be added");
+      if (state.mode === "update" && built.updates.length) {
+        parts.push("<strong>" + built.updates.length + "</strong> existing student" +
+          (built.updates.length === 1 ? "" : "s") + " will be updated");
+        const untouched = built.alreadyCount - built.updates.length;
+        if (untouched > 0) parts.push(untouched + " with nothing to change");
+      } else if (built.alreadyCount) {
+        parts.push(built.alreadyCount + " already in the register (will be skipped)");
+      }
+      if (built.issues.length) {
+        parts.push(built.issues.length + " row" + (built.issues.length === 1 ? "" : "s") +
+          " with problems (see below)");
+      }
+      summary.innerHTML = parts.join(" · ");
     }
+
+    const updNote = (state.mode === "update" && built.updates.length)
+      ? '<div class="search-note">Will be updated: ' +
+        UI.escapeHtml(built.updates.slice(0, 12).map((u) => u.name + " (" + u.student_id + ")").join(", ")) +
+        (built.updates.length > 12 ? " …" : "") + "</div>"
+      : "";
 
     const list = document.getElementById("preview-list");
     list.innerHTML = built.newStudents.length
@@ -144,8 +202,8 @@
         ).join("") +
         (built.newStudents.length > 25
           ? '<div class="search-note">…and ' + (built.newStudents.length - 25) + " more</div>"
-          : "")
-      : '<div class="search-note">No new students to add from this file.</div>';
+          : "") + updNote
+      : (updNote || '<div class="search-note">No new students to add from this file.</div>');
 
     const iz = document.getElementById("issue-zone");
     iz.innerHTML = built.issues.length
@@ -153,6 +211,14 @@
         '<div class="info-card" style="margin-top:0">' +
         built.issues.map(UI.escapeHtml).join("<br>") + "</div></div>"
       : "";
+
+    document.getElementById("import-btn").textContent = importBtnLabel();
+  }
+
+  function importBtnLabel() {
+    return (state.built && state.mode === "update" && state.built.updates.length)
+      ? "Import These Changes"
+      : "Add These Students";
   }
 
   /* ---------- import (requirement 2, 22) ---------- */
@@ -165,26 +231,45 @@
         " column first.", { type: "error" });
       return;
     }
-    if (!state.built.newStudents.length) {
-      UI.toast("There are no new students to add from this file.", { type: "error" });
+    /* rebuild with the mode chosen on this screen, in case the radio
+       was flipped after the last preview paint */
+    const built = Excel.buildImport(state.rows, state.mapping, state.existing || [], { mode: state.mode });
+    state.built = built;
+    if (!built.newStudents.length && !built.updates.length) {
+      UI.toast(state.mode === "update" && built.alreadyCount
+        ? "Nothing to change — this sheet matches the register."
+        : "There are no new students to add from this file.", { type: "error" });
       return;
     }
     const btn = document.getElementById("import-btn");
     btn.disabled = true;
-    btn.textContent = "Adding students…";
+    btn.textContent = "Saving…";
     try {
-      const res = await DB.bulkAddStudents(state.built.newStudents);
+      const res = built.newStudents.length
+        ? await DB.bulkAddStudents(built.newStudents, { record: false })
+        : { added: [], skipped: [] };
+      const upd = built.updates.length
+        ? await DB.bulkUpdateStudents(built.updates)
+        : null;
+      await DB.addImportRecord({
+        added: res.added.length,
+        updated: upd ? upd.updated : 0,
+        skipped: 0,
+        names: res.added.slice(0, 40).map((s) => s.name)
+          .concat(upd ? upd.rows.slice(0, 10).map((s) => s.name) : []),
+      });
       /* remember the mapping for next time (requirement 4) */
       const remembered = {};
       Object.keys(state.mapping).forEach((f) => { remembered[f] = state.mapping[f]; });
       await DB.setSetting("excel_mapping", remembered);
       state.added = res.added;
-      showDone(res);
+      state.snapshots = upd ? upd.snapshots : [];
+      showDone({ added: res.added, updated: upd ? upd.updated : 0, skipped: [] });
     } catch (err) {
       UI.toast(err.message || "Could not import. Please try again.", { type: "error" });
     } finally {
       btn.disabled = false;
-      btn.textContent = "Add These Students";
+      btn.textContent = importBtnLabel();
     }
   });
 
@@ -192,12 +277,19 @@
     const skippedMsg = res.skipped.length
       ? " · " + res.skipped.length + " skipped"
       : "";
+    const updatedMsg = res.updated
+      ? " · " + res.updated + " updated"
+      : "";
+    const canUndo = res.added.length || state.snapshots.length;
     document.getElementById("done-state").innerHTML =
       '<div class="empty-icon">' + UI.icon("userplus") + "</div>" +
-      '<div class="empty-title">' + res.added.length + " student" +
-      (res.added.length === 1 ? "" : "s") + " added to the register" + skippedMsg + "</div>" +
-      '<div class="empty-desc">All names above are now in your student list.</div>' +
+      '<div class="empty-title">' +
       (res.added.length
+        ? res.added.length + " student" + (res.added.length === 1 ? "" : "s") + " added to the register"
+        : (res.updated ? "Existing students updated" : "Nothing was changed")) +
+      updatedMsg + skippedMsg + "</div>" +
+      '<div class="empty-desc">Your student list has been saved.</div>' +
+      (canUndo
         ? '<button class="btn btn-danger" id="undo-import">Undo This Import</button>'
         : "") +
       '<div style="margin-top:12px">' +
@@ -209,8 +301,12 @@
       undoBtn.addEventListener("click", async () => {
         undoBtn.disabled = true;
         try {
-          const n = await DB.undoBulkAdd(state.added);
-          UI.toast("Import undone — " + n + " student" + (n === 1 ? "" : "s") + " removed.", { type: "success" });
+          const parts = [];
+          const n = state.added.length ? await DB.undoBulkAdd(state.added) : 0;
+          if (n) parts.push(n + " student" + (n === 1 ? "" : "s") + " removed");
+          const r = state.snapshots.length ? await DB.restoreStudentRows(state.snapshots) : 0;
+          if (r) parts.push(r + " update" + (r === 1 ? "" : "s") + " undone");
+          UI.toast("Import undone — " + (parts.join(", ") || "nothing to change") + ".", { type: "success" });
           undoBtn.textContent = "Undone ✓";
           document.getElementById("done-state").querySelector(".empty-title").textContent =
             "Import undone";
@@ -223,7 +319,7 @@
   }
 
   document.getElementById("restart-btn").addEventListener("click", () => {
-    state = { headers: [], rows: [], mapping: null, built: null, added: [], existingIds: null };
+    state = { headers: [], rows: [], mapping: null, built: null, added: [], existing: null, mode: "new", snapshots: [] };
     fileInput.value = "";
     show(1);
   });

@@ -1,11 +1,18 @@
 /* Proctor Register service worker — offline support + instant loads.
-   Bump CACHE_VERSION when you deploy changed assets. */
-const CACHE_VERSION = "pr-v1";
+   Bump CACHE_VERSION whenever the PRECACHE list below changes shape
+   (files added or renamed). Ordinary content edits do not need a bump:
+   pages are network-first and other assets refresh in the background. */
+const CACHE_VERSION = "pr-v2";
 const PRECACHE = [
-  "home.html", "css/style.css",
-  "js/ui.js", "js/db.js", "js/excel.js",
-  "js/page-home.js", "js/page-students.js", "js/page-student.js",
-  "js/page-upload.js", "js/page-add-student.js", "js/page-more.js",
+  "index.html", "home.html", "students.html", "student.html",
+  "add-student.html", "upload.html", "more.html",
+  "manifest.webmanifest", "css/style.css",
+  "js/config.js", "js/ui.js", "js/db.js", "js/excel.js",
+  "js/page-login.js", "js/page-home.js", "js/page-students.js",
+  "js/page-student.js", "js/page-upload.js", "js/page-add-student.js",
+  "js/page-more.js",
+  "vendor/supabase.js", "vendor/xlsx.full.min.js",
+  "icons/icon-192.png", "icons/icon-512.png",
 ];
 
 self.addEventListener("install", (e) => {
@@ -29,7 +36,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
-  if (url.origin !== location.origin) return; /* CDN + Supabase go straight to the network */
+  if (url.origin !== location.origin) return; /* Supabase API goes straight to the network */
 
   if (url.pathname.endsWith(".html") || url.pathname.endsWith("/")) {
     /* pages: network first so deploys land immediately, cache for offline */
@@ -40,7 +47,15 @@ self.addEventListener("fetch", (e) => {
           caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy));
           return res;
         })
-        .catch(() => caches.match(e.request))
+        .catch(() =>
+          /* offline: fall back to the saved copy, ignoring things like
+             ?id=… so profile links work without a connection too */
+          caches.match(e.request, { ignoreSearch: true }).then((hit) =>
+            hit || (url.pathname.endsWith("/")
+              ? caches.match("home.html")
+              : Promise.reject(new Error("offline")))
+          )
+        )
     );
     return;
   }

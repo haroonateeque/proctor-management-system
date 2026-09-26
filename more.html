@@ -8,7 +8,6 @@
   <link rel="manifest" href="manifest.webmanifest">
   <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <title>More — Proctor Register</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -41,6 +40,24 @@
       </button>
     </div>
 
+    <h2 class="section-heading">WhatsApp messages</h2>
+    <div class="card">
+      <div class="field">
+        <label for="wa-code">Country code</label>
+        <input type="text" id="wa-code" inputmode="numeric" maxlength="6" placeholder="92" autocomplete="off">
+        <span class="hint">Put in front of guardian numbers that start with 0 —
+          92 for Pakistan, 91 for India, 44 for the UK.</span>
+      </div>
+      <div class="field">
+        <label for="wa-template">Message template</label>
+        <textarea id="wa-template" rows="4" spellcheck="false"></textarea>
+        <span class="hint">Available words: {name} · {id} · {amount} · {reason} —
+          each one is filled in per student.</span>
+      </div>
+      <div class="wa-preview" id="wa-preview"></div>
+      <button class="btn btn-primary" id="wa-save">Save WhatsApp Settings</button>
+    </div>
+
     <h2 class="section-heading">Appearance</h2>
     <div class="menu-list">
       <button class="menu-item" id="btn-theme">
@@ -64,7 +81,7 @@
     <div class="info-card" id="mode-note"></div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="vendor/supabase.js"></script>
   <script src="js/config.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/db.js"></script>

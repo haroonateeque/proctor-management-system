@@ -9,14 +9,16 @@ Plain HTML/CSS/JavaScript — no build step — with **Supabase** as the hidden 
 |---|---|
 | Sign in | `index.html` |
 | Home screen with counts | `home.html` |
-| Search students (partial name / ID, forgiving match) | `students.html` |
+| Search students (name / ID / phone / CNIC / guardian number, forgiving match) | `students.html` |
 | Add a student by hand (duplicate-ID warning) | `add-student.html` |
 | Add many students from Excel (3-step wizard, auto column detection) | `upload.html` |
+| Excel template download + "update existing students" import mode | `upload.html` |
 | Student profile + history timeline + fines / warnings / suspensions / notes | `student.html` |
+| Notify the guardian on WhatsApp (custom country code + message template) | student page, home card, `more.html` |
 | Remove a student (with Undo) | student page & bulk bar |
 | Mark fine paid / remove a fine | student page |
 | Bulk actions (fine / warning / suspend / remove several at once) | `students.html` |
-| Backups, removed students, past imports, error help | `more.html` |
+| WhatsApp settings, backups, removed students, past imports, error help | `more.html` |
 
 ## Sign-in: Google (via Supabase Auth)
 
@@ -52,11 +54,14 @@ create table if not exists students (
   notes       text,
   status      text not null default 'ACTIVE',
   removed     boolean not null default false,
+  owner_id    uuid not null default auth.uid(),
   created_at  timestamptz default now(),
   updated_at  timestamptz default now()
 );
-create unique index if not exists students_sid_uniq
-  on students (lower(replace(replace(student_id, ' ', ''), '-', '')));
+-- one copy of each student ID *per proctor* (ids compare exactly the
+-- way the app does: lowercase, letters and digits only)
+create unique index if not exists students_owner_sid_uniq
+  on students (owner_id, regexp_replace(lower(student_id), '[^a-z0-9]', '', 'g'));
 
 create table if not exists history (
   id          uuid primary key default gen_random_uuid(),
@@ -66,26 +71,39 @@ create table if not exists history (
   amount      numeric,
   paid        boolean default false,
   created_by  text,
+  owner_id    uuid not null default auth.uid(),
   created_at  timestamptz default now()
 );
 create index if not exists history_student_idx on history (student_id, created_at desc);
 
 create table if not exists settings (
-  key   text primary key,
-  value jsonb
+  key      text not null,
+  value    jsonb,
+  owner_id uuid not null default auth.uid(),
+  primary key (owner_id, key)
 );
 
 alter table students enable row level security;
 alter table history  enable row level security;
 alter table settings enable row level security;
 
-create policy "proctors manage students" on students
-  for all using (auth.role() = 'authenticated');
-create policy "proctors manage history" on history
-  for all using (auth.role() = 'authenticated');
-create policy "proctors manage settings" on settings
-  for all using (auth.role() = 'authenticated');
+-- every proctor sees and edits only their own rows (enforced by the
+-- database itself, not just by the app)
+create policy "own students" on students
+  for all using (owner_id = (select auth.uid()))
+  with check (owner_id = (select auth.uid()));
+create policy "own history" on history
+  for all using (owner_id = (select auth.uid()))
+  with check (owner_id = (select auth.uid()));
+create policy "own settings" on settings
+  for all using (owner_id = (select auth.uid()))
+  with check (owner_id = (select auth.uid()));
 ```
+
+> **Already created the tables with an older version of this SQL?**
+> Run `sql/migration-privacy.sql` instead — it adds the per-proctor
+> `owner_id` columns, switches the policies to per-owner, and fixes
+> the student-ID unique index.
 
 ### 2. Turn on Google sign-in
 1. Go to the [Google Cloud Console](https://console.cloud.google.com) →
@@ -137,7 +155,8 @@ Or import the folder at <https://vercel.com/new> (no framework preset needed).
 
 ## Troubleshooting
 
-- **"Can't reach the internet"** — device offline; data in connected mode needs internet.
+- **"Can't reach the internet"** — the app opens without a connection,
+  but *reading and saving* connected data needs the internet.
 - **"You don't have permission"** — the SQL policies from step 1 weren't run.
 - **Login works but lists are empty** — that's normal; data lives per Supabase project.
 - **Excel says "file could not be read"** — re-save the file as `.xlsx` or `.csv`.
@@ -151,11 +170,16 @@ students.html         search + list + bulk actions
 student.html          profile + history + quick actions
 add-student.html      add / edit form
 upload.html           Excel wizard
-more.html             backups / removed / imports / help
+more.html             WhatsApp settings / backups / removed / imports / help
 css/style.css         mobile-first styles (+ desktop table view, print)
 js/config.js          ← the only file you may need to edit
 js/ui.js              toasts, dialogs, undo, chrome, formatting
 js/db.js              all storage logic (trial localStorage / Supabase)
 js/excel.js           Excel reading + column auto-detection
 js/page-*.js          one small script per screen
+vendor/               Supabase + Excel libraries stored locally
+                      (so the app shell and Excel import work offline)
+sql/                  database migrations (per-proctor privacy)
+sw.js                 service worker — offline app shell
+manifest.webmanifest  install-as-app (PWA) settings
 ```
