@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 136" role="img" aria-label="Forman Christian College University">
+  <!-- shield -->
+  <path d="M60 3 L114 17 V66 C114 99 90 122 60 133 C30 122 6 99 6 66 V17 Z"
+        fill="#1e5b4a" stroke="#c9a227" stroke-width="5"/>
+  <path d="M60 11 L106 22 V65 C106 94 85 114 60 124 C35 114 14 94 14 65 V22 Z"
+        fill="none" stroke="#e8d9a8" stroke-width="1.5" opacity="0.8"/>
+  <!-- open book -->
+  <g fill="#f3efe7" stroke="#c9a227" stroke-width="1.5">
+    <path d="M28 78 C40 72 52 73 59 78 L59 97 C52 92 40 91 28 96 Z"/>
+    <path d="M92 78 C80 72 68 73 61 78 L61 97 C68 92 80 91 92 96 Z"/>
+  </g>
+  <line x1="60" y1="77" x2="60" y2="98" stroke="#c9a227" stroke-width="2"/>
+  <!-- FCCU wordmark -->
+  <text x="60" y="56" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif" font-size="30"
+        font-weight="700" fill="#f6efd9" letter-spacing="2">FCCU</text>
+  <!-- ribbon -->
+  <path d="M20 104 H100 L92 116 H28 Z" fill="#c9a227"/>
+  <text x="60" y="114" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif" font-size="8.5"
+        font-weight="700" fill="#153f33" letter-spacing="0.5">FORMAN CHRISTIAN</text>
+</svg>
