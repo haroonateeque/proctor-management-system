@@ -770,9 +770,10 @@ input.invalid, textarea.invalid, select.invalid {
 }
 .home-hero-inner { max-width: 760px; margin: 0 auto; }
 .hh-fccu {
-  display: block; width: 54px; height: auto;
+  display: block; width: 62px; height: auto;
+  background: #fff; border-radius: 12px; padding: 6px;
   margin-bottom: 12px;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
 }
 .hh-date {
   font-size: 13px; font-weight: 700; letter-spacing: 0.1em;

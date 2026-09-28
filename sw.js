@@ -2,7 +2,7 @@
    Bump CACHE_VERSION whenever the PRECACHE list below changes shape
    (files added or renamed). Ordinary content edits do not need a bump:
    pages are network-first and other assets refresh in the background. */
-const CACHE_VERSION = "pr-v3";
+const CACHE_VERSION = "pr-v4";
 const PRECACHE = [
   "index.html", "home.html", "students.html", "student.html",
   "add-student.html", "upload.html", "more.html",
@@ -12,7 +12,7 @@ const PRECACHE = [
   "js/page-student.js", "js/page-upload.js", "js/page-add-student.js",
   "js/page-more.js",
   "vendor/supabase.js", "vendor/xlsx.full.min.js",
-  "icons/icon-192.png", "icons/icon-512.png", "icons/fccu-logo.svg",
+  "icons/icon-192.png", "icons/icon-512.png", "icons/fccu-logo.png",
 ];
 
 self.addEventListener("install", (e) => {
