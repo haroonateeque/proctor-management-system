@@ -1048,3 +1048,29 @@ html[data-theme="dark"] .lc-title { color: #a9d8c2; }
 .mini-btn .ic { width: 17px; height: 17px; }
 .mini-btn:hover { background: var(--primary-soft); }
 .fines-more { color: var(--muted); font-size: 13px; padding: 8px 10px; }
+/* ==============================================================
+   ID-card scanner (scan.html)
+   ============================================================== */
+.scan-card h3 { margin-top: 0; }
+.scan-tip { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+.scan-cam {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+  background: #000; border-radius: var(--radius); display: block;
+}
+.scan-shot {
+  width: 100%; border-radius: var(--radius);
+  display: block; border: 1px solid var(--border-dark);
+}
+.scan-camoff { color: var(--warning); font-weight: 600; font-size: 14px; margin: 12px 0 0; }
+.scan-actions { margin-top: 12px; }
+.scan-status { text-align: center; color: var(--muted); font-size: 14px; margin: 4px 0 8px; }
+.empty-sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
+.field.missing input, .field.missing textarea {
+  border-color: var(--danger); background: var(--danger-soft);
+}
+.field .miss-hint {
+  display: block; color: var(--danger);
+  font-size: 13px; font-weight: 600; margin-top: 5px;
+}
+html[data-theme="dark"] .scan-cam { background: #000; }
+html[data-theme="dark"] .scan-shot { border-color: var(--border-dark); }

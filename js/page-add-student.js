@@ -17,6 +17,9 @@
   if (editId) saveBtn.textContent = "Save Changes";
 
   const F = (id) => document.getElementById(id);
+  document.querySelectorAll("[data-icon]").forEach((el) => {
+    el.innerHTML = UI.icon(el.dataset.icon);
+  });
 
   if (editId) {
     try {
@@ -62,6 +65,26 @@
     } catch (e) { /* warning is best-effort */ }
   }, 350);
   F("student_id").addEventListener("input", checkDupe);
+
+  /* Prefill from the ID-card scanner (scan.html hands data over). */
+  if (!editId && params.get("from") === "scan") {
+    try {
+      const pre = JSON.parse(sessionStorage.getItem("pr_scan_prefill") || "null");
+      if (pre) {
+        Object.keys(pre).forEach((k) => {
+          const el = F(k);
+          if (el && pre[k]) el.value = pre[k];
+        });
+        sessionStorage.removeItem("pr_scan_prefill");
+        UI.toast("Details read from the ID card — check them, then save.", { type: "success" });
+        dupeWarn.style.display = "block";
+        dupeWarn.style.color = "var(--muted)";
+        dupeWarn.textContent = "Prefilled from a scanned card — please review.";
+        lastChecked = "";
+        checkDupe();
+      }
+    } catch (e) { /* a broken prefill should never block the form */ }
+  }
 
   function setError(msg) {
     if (!msg) { errBox.classList.remove("show"); return; }

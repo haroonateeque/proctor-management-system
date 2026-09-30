@@ -11,6 +11,7 @@ Plain HTML/CSS/JavaScript — no build step — with **Supabase** as the hidden 
 | Home screen with counts | `home.html` |
 | Search students (name / ID / phone / CNIC / guardian number, forgiving match) | `students.html` |
 | Add a student by hand (duplicate-ID warning) | `add-student.html` |
+| Scan the ID card (front + back) to auto-fill a new student | `scan.html` |
 | Add many students from Excel (3-step wizard, auto column detection) | `upload.html` |
 | Excel template download + "update existing students" import mode | `upload.html` |
 | Student profile + history timeline + fines / warnings / suspensions / notes | `student.html` |
@@ -160,6 +161,8 @@ Or import the folder at <https://vercel.com/new> (no framework preset needed).
 - **"You don't have permission"** — the SQL policies from step 1 weren't run.
 - **Login works but lists are empty** — that's normal; data lives per Supabase project.
 - **Excel says "file could not be read"** — re-save the file as `.xlsx` or `.csv`.
+- **Card scan says the reader didn't load** — scanning downloads its OCR engine
+  (about 15 MB) from the internet the first time, so it needs a connection.
 
 ## File map
 
@@ -169,6 +172,7 @@ home.html             dashboard
 students.html         search + list + bulk actions
 student.html          profile + history + quick actions
 add-student.html      add / edit form
+scan.html             ID-card scanner (camera → OCR → prefilled form)
 upload.html           Excel wizard
 more.html             WhatsApp settings / backups / removed / imports / help
 css/style.css         mobile-first styles (+ desktop table view, print)
@@ -176,6 +180,7 @@ js/config.js          ← the only file you may need to edit
 js/ui.js              toasts, dialogs, undo, chrome, formatting
 js/db.js              all storage logic (trial localStorage / Supabase)
 js/excel.js           Excel reading + column auto-detection
+js/scan-parse.js      card-text parsing for the scanner (unit-tested)
 js/page-*.js          one small script per screen
 vendor/               Supabase + Excel libraries stored locally
                       (so the app shell and Excel import work offline)
