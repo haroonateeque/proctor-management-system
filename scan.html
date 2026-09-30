@@ -30,7 +30,7 @@
       <div class="step" id="step-3"><span class="st-num">3</span>Add</div>
     </div>
 
-    <!-- LIVE AUTO-SCAN -->
+    <!-- GUIDED CAPTURE: frame the card, press Capture, get a verdict -->
     <section id="scan-view">
       <div class="card scan-card">
         <div class="scan-stage">
@@ -45,20 +45,20 @@
         <p class="scan-status" id="scan-status">Starting the camera…</p>
         <p class="scan-sub" id="scan-sub">Lay the card flat and keep it inside the box.</p>
         <div class="form-actions scan-actions">
-          <button type="button" class="btn btn-secondary" id="snap-btn">Take Photo Now</button>
+          <button type="button" class="btn btn-primary" id="snap-btn">Capture Front</button>
           <label class="btn btn-secondary" for="file-input">Upload a Photo</label>
           <input type="file" id="file-input" class="hidden-input" accept="image/*">
         </div>
         <p class="scan-camoff" id="camoff" hidden>Camera unavailable — you can upload a photo instead.</p>
         <div class="form-error" id="scan-error"></div>
         <div class="form-actions">
-          <a class="btn btn-primary" href="add-student.html">Enter Details by Hand</a>
+          <a class="btn btn-secondary" href="add-student.html" id="manual-link">Enter Details by Hand</a>
         </div>
       </div>
       <div class="info-card">The card is read right here on your device — photos are never uploaded anywhere.</div>
     </section>
 
-    <!-- REVIEW: only shown when auto-scan could not read the card -->
+    <!-- REVIEW: only shown when the user gives up and goes by hand -->
     <section id="review-view" hidden>
       <div class="summary-box" id="review-summary"></div>
       <div class="card">

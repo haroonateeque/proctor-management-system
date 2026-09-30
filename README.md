@@ -11,7 +11,7 @@ Plain HTML/CSS/JavaScript — no build step — with **Supabase** as the hidden 
 | Home screen with counts | `home.html` |
 | Search students (name / ID / phone / CNIC / guardian number, forgiving match) | `students.html` |
 | Add a student by hand (duplicate-ID warning) | `add-student.html` |
-| Scan the ID card — live camera auto-reads front + back and prefills a new student | `scan.html` |
+| Scan the ID card — frame it, tap Capture for front and back, and it prefills a new student | `scan.html` |
 | Add many students from Excel (3-step wizard, auto column detection) | `upload.html` |
 | Excel template download + "update existing students" import mode | `upload.html` |
 | Student profile + history timeline + fines / warnings / suspensions / notes | `student.html` |

@@ -1110,6 +1110,7 @@ html[data-theme="dark"] .lc-title { color: #a9d8c2; }
 }
 .scan-camoff { color: var(--warning); font-weight: 600; font-size: 14px; margin: 12px 0 0; text-align: center; }
 .scan-actions { margin-top: 12px; }
+.scan-actions .btn-primary { flex: 2; }
 .scan-status, .scan-sub { min-height: 1.3em; }
 .field.missing input, .field.missing textarea {
   border-color: var(--danger); background: var(--danger-soft);

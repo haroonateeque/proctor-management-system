@@ -1,8 +1,10 @@
-/* Live auto-scan of a student ID card.
-   One screen: the camera runs a loop that crops the card inside the
-   guide, reads it (persistent OCR worker + QR) and flips front → back
-   by itself, then hands the extracted fields to the Add Student form.
-   The review screen only appears when the card could not be read. */
+/* Guided two-shot card scan.
+   The camera shows a live guide; the user frames the card and presses
+   Capture (or uploads a photo) for each side. Every photo gets ONE
+   instant verdict — accepted (flip side) or a specific reason to retake.
+   A persistent OCR worker + QR read the card on-device, then the fields
+   are handed to the Add Student form. The review screen holds whatever
+   was read when the user gives up and goes by hand. */
 (async () => {
   const session = await DB.requireSession();
   if (!session) return;
@@ -13,21 +15,17 @@
 
   const $ = (id) => document.getElementById(id);
   const CARD_ASPECT = 1.586;          /* width / height of a CR80 card */
-  const FRONT_BUDGET_MS = 45000;
-  const BACK_BUDGET_MS = 25000;
 
   const video = $("cam");
   const shotImg = $("shot");
   const guide = $("guide");
 
   let phase = "front";                /* front | back | done | review */
-  let loopToken = 0;
   let worker = null;
   let workerPromise = null;
   let workerFailed = false;
   let camStream = null;
-  let uploadBusy = false;
-  let forceOnce = false;
+  let busy = false;
   const results = { frontText: "", backText: "", qrFront: "", qrBack: "" };
 
   const steps = { 1: $("step-1"), 2: $("step-2"), 3: $("step-3") };
@@ -48,7 +46,20 @@
     box.textContent = msg || "";
     box.classList.toggle("show", !!msg);
   }
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function setBusy(b) {
+    busy = b;
+    $("snap-btn").disabled = b;
+    $("file-input").disabled = b;
+  }
+  function sideHint(side) {
+    return side === "back"
+      ? ["Point at the BACK of the card", "The address and QR code are on the back — fill the box."]
+      : ["Point at the FRONT of the card", "Fill the box with the card — flat, steady, good light."];
+  }
+  function syncCaptureLabel() {
+    $("snap-btn").textContent = "Capture " + (phase === "back" ? "Back" : "Front");
+  }
+  syncCaptureLabel();
 
   /* ---------- persistent OCR worker (created once, reused forever) ---------- */
   function ensureWorker() {
@@ -61,7 +72,7 @@
       "First visit only — it is cached after this.");
     workerPromise = Tesseract.createWorker("eng", 1, {
       logger: (m) => {
-        if (worker) return; /* after init, the loop owns the status line */
+        if (worker) return; /* after init, the capture flow owns the status line */
         if (m.status === "recognizing text") return;
         const pct = typeof m.progress === "number" ? Math.round(m.progress * 100) + "%" : "";
         setStatus(m.status ? m.status.replace(/^./, (c) => c.toUpperCase()) + " " + pct : "Loading…",
@@ -69,7 +80,10 @@
       },
     }).then((w) => {
       worker = w;
-      setStatus("Ready.", "");
+      if (!busy && (phase === "front" || phase === "back")) {
+        const h = sideHint(phase);
+        setStatus(h[0], h[1]);
+      }
       return w;
     }).catch((err) => {
       workerFailed = true;
@@ -78,8 +92,8 @@
     return workerPromise;
   }
 
-  /* All OCR goes through one lock: the live loop and a user upload may
-     overlap, and interleaved setParameters would garble the other read. */
+  /* All OCR goes through one lock so overlapping reads can't interleave
+     setParameters and garble each other. */
   let ocrChain = Promise.resolve();
   function ocr(canvas, psm, whitelist) {
     const job = ocrChain.then(async () => {
@@ -123,14 +137,6 @@
   }
 
   /* ---------- geometry + image prep ---------- */
-  function currentSource() {
-    if (!shotImg.hidden && shotImg.naturalWidth) {
-      return { el: shotImg, w: shotImg.naturalWidth, h: shotImg.naturalHeight };
-    }
-    return { el: video, w: video.videoWidth || 0, h: video.videoHeight || 0 };
-  }
-
-  /* the part of the source that fills the frame (object-fit: cover) */
   function cardRect(w, h) {
     const sa = w / h;
     if (sa > CARD_ASPECT) {
@@ -225,11 +231,10 @@
     } catch (e) { return ""; }
   }
 
-  /* ---------- one read attempt on the current side ---------- */
+  /* ---------- one read of a photo ---------- */
   async function attempt(side, src, opts) {
     const card = cardRect(src.w, src.h);
-    if (!opts.upload && !forceOnce && !cardPresent(src, card)) return { present: false };
-    forceOnce = false;
+    if (!opts.upload && !cardPresent(src, card)) return { present: false };
 
     const qr = decodeQr(src, card);
     if (side === "front") {
@@ -253,79 +258,16 @@
     return { present: true, text: text, r: r, qr: qr };
   }
 
-  /* ---------- the auto-scan loop ---------- */
-  function hint(side) {
-    return side === "front"
-      ? ["Show the FRONT of the card", "Lay the card flat and keep it inside the box."]
-      : ["Show the BACK of the card", "The address and QR code are on the back."];
-  }
-
   function foundBits(r) {
     const bits = [];
     if (r.found.name) bits.push("name");
     if (r.found.student_id) bits.push("ID");
     if (r.found.class_name) bits.push("class");
     if (r.found.address) bits.push("address");
-    return bits.length ? "read the " + bits.join(", ") : "nothing readable yet";
+    return bits.length ? bits.join(", ") : "nothing readable yet";
   }
 
-  async function runLoop() {
-    const token = ++loopToken;
-    const side = phase;
-    const deadline = performance.now() + (side === "front" ? FRONT_BUDGET_MS : BACK_BUDGET_MS);
-    const base = hint(side);
-    setStatus(base[0], base[1]);
-    ensureWorker().catch(() => { /* handled inside ocr / fatal below */ });
-
-    let attempts = 0;
-    while (token === loopToken && phase === side) {
-      if (performance.now() > deadline) break;
-      if (uploadBusy) { await sleep(300); continue; }
-      const src = currentSource();
-      if (!src.w) { await sleep(250); continue; }
-
-      let res;
-      try {
-        res = await attempt(side, src, {});
-      } catch (err) {
-        if (workerFailed) { fatal("The card reader could not load — check your internet connection and try again."); return; }
-        await sleep(400);
-        continue;
-      }
-      if (token !== loopToken || phase !== side) return;
-
-      if (!res.present) {
-        setStatus(base[0], "Center the card and hold it steady.");
-        await sleep(350);
-        continue;
-      }
-
-      if (side === "front") {
-        results.frontText = res.text;
-        if (res.qr) results.qrFront = res.qr;
-      } else {
-        results.backText = res.text;
-        if (res.qr) results.qrBack = res.qr;
-      }
-
-      const ok = side === "front"
-        ? ScanParse.validateFront(res.r)
-        : ScanParse.validateBack(res.r);
-      if (ok) { accept(side); return; }
-
-      attempts++;
-      setStatus("Reading… attempt " + attempts,
-        side === "front"
-          ? "Still " + foundBits(res.r) + " — hold steady in good light."
-          : "Found the QR code, still looking for the address — keep the back inside the box.");
-      await sleep(250);
-    }
-    if (token !== loopToken || phase !== side) return;
-    if (side === "front") failToReview("We could not read the front of the card clearly.");
-    else finish();
-  }
-
-  function recordAttempt(side, res) {
+  function record(side, res) {
     if (side === "front") {
       results.frontText = res.text;
       if (res.qr) results.qrFront = res.qr;
@@ -335,15 +277,125 @@
     }
   }
 
+  /* ---------- verdict for one photo ---------- */
+  function judge(side, res) {
+    if (!res || !res.present) {
+      setStatus("No card found in that photo.",
+        "Fill the box with the card — flat, steady, good light.");
+      return;
+    }
+    record(side, res);
+    const ok = side === "front"
+      ? ScanParse.validateFront(res.r)
+      : ScanParse.validateBack(res.r);
+    if (ok) { accept(side); return; }
+    setStatus(
+      side === "front"
+        ? "Couldn't read the name + ID from that photo."
+        : "Couldn't read the address from that photo.",
+      "Read so far: " + foundBits(res.r) +
+        (side === "front"
+          ? " — try again closer, straighter, no glare."
+          : " — keep the whole back inside the box.")
+    );
+  }
+
+  /* Read one frozen photo: dataUrl already visible in #shot. */
+  async function readPhoto(dataUrl, opts) {
+    if (busy) return;
+    setBusy(true);
+    setScanError("");
+    shotImg.src = dataUrl;
+    shotImg.hidden = false;
+    video.hidden = true;
+    try { await shotImg.decode(); } catch (e) { /* decode() unsupported: onload fallback */ }
+    if (!shotImg.naturalWidth) {
+      await new Promise((resolve) => { shotImg.onload = resolve; shotImg.onerror = resolve; });
+    }
+
+    const side = phase;
+    let res = null;
+    try {
+      await ensureWorker();
+    } catch (err) {
+      finishShot();
+      fatal("The card reader could not load — check your internet connection.");
+      return;
+    }
+    setStatus("Reading the photo…", "");
+    try {
+      res = await attempt(side, { el: shotImg, w: shotImg.naturalWidth, h: shotImg.naturalHeight }, opts);
+    } catch (err) {
+      res = null;
+      if (workerFailed) {
+        finishShot();
+        fatal("The card reader could not load — check your internet connection.");
+        return;
+      }
+    }
+    finishShot();
+    judge(side, res);
+  }
+
+  function finishShot() {
+    shotImg.hidden = true;
+    shotImg.src = "";
+    if (camStream) video.hidden = false;
+    setBusy(false);
+  }
+
+  /* ---------- controls ---------- */
+  $("snap-btn").addEventListener("click", () => {
+    if (busy || (phase !== "front" && phase !== "back")) return;
+    if (!video.videoWidth) {
+      setStatus("The camera isn't ready yet.", "Wait a moment, or use Upload a Photo.");
+      return;
+    }
+    const c = document.createElement("canvas");
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    c.getContext("2d").drawImage(video, 0, 0);
+    readPhoto(c.toDataURL("image/jpeg", 0.92), { upload: false });
+  });
+
+  $("file-input").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type && file.type.indexOf("image/") !== 0) {
+      setScanError("Please choose an image file (jpg or png).");
+      return;
+    }
+    const dataUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+    if (!dataUrl) { setScanError("Could not read that file. Try another photo."); return; }
+    readPhoto(dataUrl, { upload: true });
+  });
+
+  /* With anything read so far, "Enter Details by Hand" opens the review
+     screen pre-filled instead of an empty form. */
+  $("manual-link").addEventListener("click", (e) => {
+    if (results.frontText || results.backText) {
+      e.preventDefault();
+      failToReview("We stopped before the card was fully read.");
+    }
+  });
+
+  /* ---------- accept / finish / review ---------- */
   function accept(side) {
     guide.classList.add("accept");
     if (side === "front") {
       phase = "back";
       setSteps(2);
       $("guide-label").textContent = "BACK";
-      setStatus("Front read — now flip to the BACK", "Show the back of the card in the box.");
+      syncCaptureLabel();
+      setStatus("Front read — flip to the BACK.",
+        "Capture the back: the address and QR code.");
       setTimeout(() => guide.classList.remove("accept"), 700);
-      runLoop();
     } else {
       setStatus("Back read — adding the student…", "");
       setTimeout(() => { guide.classList.remove("accept"); finish(); }, 450);
@@ -352,7 +404,6 @@
 
   function finish() {
     phase = "done";
-    loopToken++;
     stopCam();
     const r = ScanParse.parseCard(results.frontText, results.backText, results.qrBack || results.qrFront);
     if (ScanParse.validateFront(r)) {
@@ -374,7 +425,6 @@
 
   function failToReview(msg) {
     phase = "review";
-    loopToken++;
     stopCam();
     const r = ScanParse.parseCard(results.frontText, results.backText, results.qrBack || results.qrFront);
     showReview(r, msg);
@@ -382,11 +432,11 @@
 
   function fatal(msg) {
     phase = "review";
-    loopToken++;
     stopCam();
     setStatus("Could not start the card reader.", msg);
     setScanError(msg);
     $("snap-btn").disabled = true;
+    $("file-input").disabled = true;
   }
 
   /* ---------- review (fallback only) ---------- */
@@ -405,7 +455,8 @@
 
     let found = 0;
     REVIEW_FIELDS.forEach(([key, id]) => {
-      $(id).value = r[key] || "";
+      /* only trust fields that actually parsed */
+      $(id).value = r.found[key] ? r[key] : "";
       const wrap = $("fw-" + key);
       const missing = !r.found[key];
       wrap.classList.toggle("missing", missing);
@@ -469,85 +520,17 @@
     setScanError("");
     reviewError("");
     $("snap-btn").disabled = false;
+    $("file-input").disabled = false;
     phase = "front";
     setSteps(1);
     $("guide-label").textContent = "FRONT";
+    syncCaptureLabel();
+    const h = sideHint("front");
+    setStatus(h[0], h[1]);
     startCam();
-    runLoop();
   });
 
-  /* ---------- controls ---------- */
-  $("snap-btn").addEventListener("click", () => {
-    forceOnce = true;
-    setStatus("Checking the card…", "");
-  });
-
-  $("file-input").addEventListener("change", async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    if (file.type && file.type.indexOf("image/") !== 0) {
-      setScanError("Please choose an image file (jpg or png).");
-      return;
-    }
-    setScanError("");
-    await handleUpload(file);
-  });
-
-  async function handleUpload(file) {
-    const dataUrl = await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-    if (!dataUrl) { setScanError("Could not read that file. Try another photo."); return; }
-
-    loopToken++;                 /* pause the live loop */
-    uploadBusy = true;
-    shotImg.src = dataUrl;
-    shotImg.hidden = false;
-    video.hidden = true;
-    try { await shotImg.decode(); } catch (e) { /* decode() unsupported: onload fallback */ }
-    if (!shotImg.naturalWidth) {
-      await new Promise((resolve) => { shotImg.onload = resolve; shotImg.onerror = resolve; });
-    }
-    setStatus("Checking your photo…", "");
-
-    const side = phase;
-    let res = null;
-    try {
-      res = await attempt(side, { el: shotImg, w: shotImg.naturalWidth, h: shotImg.naturalHeight }, { upload: true });
-    } catch (err) {
-      res = null;
-      if (workerFailed) {
-        uploadBusy = false;
-        fatal("The card reader could not load — check your internet connection.");
-        return;
-      }
-    }
-
-    shotImg.hidden = true;
-    shotImg.src = "";
-    if (camStream) video.hidden = false;
-    uploadBusy = false;
-
-    if (res && res.present) {
-      recordAttempt(side, res);
-      const ok = side === "front" ? ScanParse.validateFront(res.r) : ScanParse.validateBack(res.r);
-      if (ok) { accept(side); return; }
-      setStatus(side === "front"
-        ? "That photo did not give a clear name + ID yet."
-        : "No address found in that photo.",
-        "Try a sharper, closer photo with the whole card in frame.");
-      runLoop();
-      return;
-    }
-    setStatus("Could not find the card in that photo.", "Try a closer photo with the whole card visible.");
-    runLoop();
-  }
-
-  /* ---------- start ---------- */
+  /* ---------- start: reader download and camera kick off together ---------- */
+  ensureWorker().catch(() => { /* surfaced by fatal() on first use */ });
   startCam();
-  runLoop();
 })();
