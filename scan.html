@@ -20,111 +20,70 @@
     <div class="steps">
       <div class="step" id="step-1"><span class="st-num">1</span>Front</div>
       <div class="step" id="step-2"><span class="st-num">2</span>Back</div>
-      <div class="step" id="step-3"><span class="st-num">3</span>Review</div>
+      <div class="step" id="step-3"><span class="st-num">3</span>Add</div>
     </div>
 
-    <!-- STEP 1: front of the card -->
-    <section id="panel-1">
+    <!-- LIVE AUTO-SCAN -->
+    <section id="scan-view">
       <div class="card scan-card">
-        <h3 style="margin-bottom:4px">Photograph the FRONT of the card</h3>
-        <p class="scan-tip">Lay the card flat in good light and fit it inside the frame.</p>
-        <video id="cam-front" class="scan-cam" autoplay playsinline muted></video>
-        <img id="shot-front" class="scan-shot" hidden alt="Captured front of the card">
-        <p class="scan-camoff" id="camoff-front" hidden>Camera unavailable — you can upload a photo instead.</p>
-        <div class="form-actions scan-actions" id="shoot-front">
-          <button type="button" class="btn btn-primary" id="shutter-front">Take Photo</button>
-          <label class="btn btn-secondary" for="file-front">Upload a Photo</label>
-          <input type="file" id="file-front" class="hidden-input" accept="image/*">
+        <div class="scan-stage">
+          <div class="scan-frame" id="scan-frame">
+            <video id="cam" autoplay playsinline muted></video>
+            <img id="shot" hidden alt="Your uploaded card photo">
+            <div class="guide" id="guide">
+              <span class="guide-label" id="guide-label">FRONT</span>
+            </div>
+          </div>
         </div>
-        <div class="form-error" id="err-front"></div>
-        <div class="form-actions" id="confirm-front" hidden>
-          <button type="button" class="btn btn-primary" id="use-front">Use This Photo</button>
-          <button type="button" class="btn btn-secondary" id="retake-front">Retake</button>
+        <p class="scan-status" id="scan-status">Starting the camera…</p>
+        <p class="scan-sub" id="scan-sub">Lay the card flat and keep it inside the box.</p>
+        <div class="form-actions scan-actions">
+          <button type="button" class="btn btn-secondary" id="snap-btn">Take Photo Now</button>
+          <label class="btn btn-secondary" for="file-input">Upload a Photo</label>
+          <input type="file" id="file-input" class="hidden-input" accept="image/*">
+        </div>
+        <p class="scan-camoff" id="camoff" hidden>Camera unavailable — you can upload a photo instead.</p>
+        <div class="form-error" id="scan-error"></div>
+        <div class="form-actions">
+          <a class="btn btn-primary" href="add-student.html">Enter Details by Hand</a>
         </div>
       </div>
       <div class="info-card">The card is read right here on your device — photos are never uploaded anywhere.</div>
     </section>
 
-    <!-- STEP 2: back of the card -->
-    <section id="panel-2" hidden>
-      <div class="card scan-card">
-        <h3 style="margin-bottom:4px">Now the BACK of the card</h3>
-        <p class="scan-tip">The address and QR code live on the back. Keep the whole card in frame.</p>
-        <video id="cam-back" class="scan-cam" autoplay playsinline muted></video>
-        <img id="shot-back" class="scan-shot" hidden alt="Captured back of the card">
-        <p class="scan-camoff" id="camoff-back" hidden>Camera unavailable — you can upload a photo instead.</p>
-        <div class="form-actions scan-actions" id="shoot-back">
-          <button type="button" class="btn btn-primary" id="shutter-back">Take Photo</button>
-          <label class="btn btn-secondary" for="file-back">Upload a Photo</label>
-          <input type="file" id="file-back" class="hidden-input" accept="image/*">
-        </div>
-        <div class="form-error" id="err-back"></div>
-        <div class="form-actions" id="confirm-back" hidden>
-          <button type="button" class="btn btn-primary" id="use-back">Read the Card</button>
-          <button type="button" class="btn btn-secondary" id="retake-back">Retake</button>
-        </div>
-      </div>
-      <div class="info-card">Reading takes a few seconds — longer the very first time.</div>
-    </section>
-
-    <!-- STEP 3: read + review -->
-    <section id="panel-3" hidden>
-      <div class="card" id="reading-zone" hidden>
-        <div class="empty-state">
-          <div class="empty-icon" id="reading-icon"></div>
-          <div class="empty-title">Reading the card…</div>
-          <div class="empty-sub">Please keep this page open.</div>
-        </div>
-        <p class="scan-status" id="scan-status">Starting…</p>
-      </div>
-
-      <div id="review-zone" hidden>
-        <div class="summary-box" id="review-summary"></div>
-        <div class="card">
-          <div class="form-section">
-            <h3>What we read from the card <span class="hint">(check it, then continue)</span></h3>
-            <div class="form-grid">
-              <div class="field" id="fw-name">
-                <label for="rv-name">Full Name <span class="hint">(required)</span></label>
-                <input type="text" id="rv-name" autocomplete="off">
-              </div>
-              <div class="field" id="fw-student_id">
-                <label for="rv-student_id">Student ID <span class="hint">(required)</span></label>
-                <input type="text" id="rv-student_id" autocomplete="off">
-              </div>
-              <div class="field" id="fw-class_name">
-                <label for="rv-class_name">Class / Program</label>
-                <input type="text" id="rv-class_name" autocomplete="off">
-              </div>
+    <!-- REVIEW: only shown when auto-scan could not read the card -->
+    <section id="review-view" hidden>
+      <div class="summary-box" id="review-summary"></div>
+      <div class="card">
+        <div class="form-section">
+          <h3>What we read from the card <span class="hint">(check it, then continue)</span></h3>
+          <div class="form-grid">
+            <div class="field" id="fw-name">
+              <label for="rv-name">Full Name <span class="hint">(required)</span></label>
+              <input type="text" id="rv-name" autocomplete="off">
             </div>
-            <div class="field" id="fw-address">
-              <label for="rv-address">Address</label>
-              <input type="text" id="rv-address" autocomplete="off">
+            <div class="field" id="fw-student_id">
+              <label for="rv-student_id">Student ID <span class="hint">(required)</span></label>
+              <input type="text" id="rv-student_id" autocomplete="off">
             </div>
-            <div class="field" id="fw-notes">
-              <label for="rv-notes">Notes</label>
-              <textarea id="rv-notes"></textarea>
+            <div class="field" id="fw-class_name">
+              <label for="rv-class_name">Class / Program</label>
+              <input type="text" id="rv-class_name" autocomplete="off">
             </div>
           </div>
-          <div class="form-error" id="review-error"></div>
-          <div class="form-actions">
-            <button type="button" class="btn btn-primary" id="continue-btn">Continue to Student Form</button>
-            <button type="button" class="btn btn-secondary" id="restart-btn">Start Over</button>
+          <div class="field" id="fw-address">
+            <label for="rv-address">Address</label>
+            <input type="text" id="rv-address" autocomplete="off">
+          </div>
+          <div class="field" id="fw-notes">
+            <label for="rv-notes">Notes</label>
+            <textarea id="rv-notes"></textarea>
           </div>
         </div>
-      </div>
-
-      <div id="fail-zone" hidden>
-        <div class="card">
-          <div class="empty-state">
-            <div class="empty-icon" id="fail-icon"></div>
-            <div class="empty-title">Could not read the card</div>
-            <div class="empty-sub" id="fail-reason">Something went wrong.</div>
-          </div>
-          <div class="form-actions">
-            <button type="button" class="btn btn-primary" id="retry-read-btn">Try Reading Again</button>
-            <a class="btn btn-secondary" href="add-student.html">Add by Hand Instead</a>
-          </div>
+        <div class="form-error" id="review-error"></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" id="continue-btn">Continue to Student Form</button>
+          <button type="button" class="btn btn-secondary" id="restart-btn">Try Scanning Again</button>
         </div>
       </div>
     </section>

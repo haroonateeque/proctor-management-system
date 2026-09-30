@@ -11,7 +11,7 @@ Plain HTML/CSS/JavaScript — no build step — with **Supabase** as the hidden 
 | Home screen with counts | `home.html` |
 | Search students (name / ID / phone / CNIC / guardian number, forgiving match) | `students.html` |
 | Add a student by hand (duplicate-ID warning) | `add-student.html` |
-| Scan the ID card (front + back) to auto-fill a new student | `scan.html` |
+| Scan the ID card — live camera auto-reads front + back and prefills a new student | `scan.html` |
 | Add many students from Excel (3-step wizard, auto column detection) | `upload.html` |
 | Excel template download + "update existing students" import mode | `upload.html` |
 | Student profile + history timeline + fines / warnings / suspensions / notes | `student.html` |
@@ -162,7 +162,7 @@ Or import the folder at <https://vercel.com/new> (no framework preset needed).
 - **Login works but lists are empty** — that's normal; data lives per Supabase project.
 - **Excel says "file could not be read"** — re-save the file as `.xlsx` or `.csv`.
 - **Card scan says the reader didn't load** — scanning downloads its OCR engine
-  (about 15 MB) from the internet the first time, so it needs a connection.
+  (about 3 MB) from the internet the first time, so it needs a connection.
 
 ## File map
 

@@ -43,25 +43,29 @@ const ScanParse = (() => {
   }
 
   /* Student ID: prefer a QR payload that also appears printed on the card,
-     then a pure digit line on the front, then any 7-12 digit run. */
+     then digit-only lines/runs on the front. A candidate must start with a
+     non-zero digit (real IDs never do) and a "digit line" must contain no
+     letters — otherwise OCR noise like "QV 14.000 29/7 a" becomes an ID. */
   function extractId(frontLines, backLines, qrData) {
     const qrDigits = digitsOnly(qrData);
     const qrId = qrDigits.length >= 6 && qrDigits.length <= 12 ? qrDigits : "";
     const all = frontLines.concat(backLines);
 
-    const pureDigit = frontLines.find(
-      (l) => /^\d{7,12}$/.test(digitsOnly(l)) && digitsOnly(l).length >= 7
-    );
+    const pureLines = frontLines
+      .filter((l) => !/[a-z]/i.test(l))
+      .map(digitsOnly)
+      .filter((d) => d.length >= 7 && d.length <= 12);
     const runs = [];
     all.forEach((l) => digitRuns(l).forEach((d) => runs.push(d)));
 
-    if (qrId && (pureDigit === qrId || runs.includes(qrId))) {
+    const printed = pureLines.concat(runs);
+    const usable = (d) => !!d && /^[1-9]/.test(d);
+
+    if (qrId && printed.indexOf(qrId) >= 0) {
       return { id: qrId, crossChecked: true };
     }
-    if (pureDigit) return { id: digitsOnly(pureDigit), crossChecked: false };
-    if (runs.length) return { id: runs[0], crossChecked: false };
-    if (qrId) return { id: qrId, crossChecked: false };
-    return { id: "", crossChecked: false };
+    const id = printed.find(usable) || (usable(qrId) ? qrId : "");
+    return { id: id, crossChecked: false };
   }
 
   /* Class/program line, e.g. "BCS" or "BS Computer Science". */
@@ -96,6 +100,14 @@ const ScanParse = (() => {
     return out.join(" ").replace(/\s+/g, " ").trim();
   }
 
+  /* An address must read like one: enough characters and at least two
+     real words. Rejects OCR noise such as "00:06:450 129". */
+  function looksLikeAddress(a) {
+    if (!a || a.trim().length < 10) return false;
+    const words = a.split(/\s+/).filter((w) => /[a-z]{3}/i.test(w));
+    return words.length >= 2;
+  }
+
   /* Address: the block after "Address:" on the back, stopping at the
      numbered rules. Falls back to the lines before the first rule. */
   function extractAddress(backLines) {
@@ -113,7 +125,8 @@ const ScanParse = (() => {
         out.push(l);
       }
     }
-    return out.join(" ").replace(/\s+/g, " ").replace(/\s+([.,])/g, "$1").trim();
+    const joined = out.join(" ").replace(/\s+/g, " ").replace(/\s+([.,])/g, "$1").trim();
+    return looksLikeAddress(joined) ? joined : "";
   }
 
   /* "Valid Upto: July, 2029" (either side) → a note for the form. */
@@ -129,6 +142,25 @@ const ScanParse = (() => {
       }
     }
     return "";
+  }
+
+  /* Confidence checks used by the auto-scan loop: a side is only
+     "read" when the fields it is supposed to carry actually parsed.
+     Names never contain digits; IDs are 7-12 digits and never start
+     with 0. Together with extractId's rules this rejects camera noise
+     such as a clock pattern OCR'd as "000:01:300". */
+  function plausibleName(name) {
+    return !!name && !/\d/.test(name) && (name.match(/[a-z]/gi) || []).length >= 5;
+  }
+
+  function validateFront(result) {
+    return !!(result && result.found && result.found.name && result.found.student_id
+      && plausibleName(result.name) && /^[1-9]\d{6,11}$/.test(result.student_id));
+  }
+
+  function validateBack(result) {
+    return !!(result && result.found && result.found.address
+      && looksLikeAddress(result.address));
   }
 
   function parseCard(frontText, backText, qrData) {
@@ -161,5 +193,6 @@ const ScanParse = (() => {
   return {
     parseCard, toLines, isBoilerplate, digitsOnly,
     extractId, extractClass, extractName, extractAddress, extractNotes,
+    validateFront, validateBack, looksLikeAddress,
   };
 })();

@@ -1051,20 +1051,66 @@ html[data-theme="dark"] .lc-title { color: #a9d8c2; }
 /* ==============================================================
    ID-card scanner (scan.html)
    ============================================================== */
-.scan-card h3 { margin-top: 0; }
-.scan-tip { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
-.scan-cam {
-  width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
-  background: #000; border-radius: var(--radius); display: block;
+.scan-stage { display: flex; justify-content: center; }
+.scan-frame {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  aspect-ratio: 1.586;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
 }
-.scan-shot {
-  width: 100%; border-radius: var(--radius);
-  display: block; border: 1px solid var(--border-dark);
+.scan-frame video,
+.scan-frame img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
-.scan-camoff { color: var(--warning); font-weight: 600; font-size: 14px; margin: 12px 0 0; }
+.guide {
+  position: absolute;
+  inset: 10px;
+  border: 2px dashed rgba(255, 255, 255, 0.8);
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.guide.accept {
+  border-color: var(--success);
+  box-shadow: 0 0 0 999px rgba(16, 124, 80, 0.35);
+}
+.guide-label {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 3px 12px;
+  border-radius: 999px;
+}
+.scan-status {
+  text-align: center;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 16px;
+  margin: 14px 0 4px;
+}
+.scan-sub {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+.scan-camoff { color: var(--warning); font-weight: 600; font-size: 14px; margin: 12px 0 0; text-align: center; }
 .scan-actions { margin-top: 12px; }
-.scan-status { text-align: center; color: var(--muted); font-size: 14px; margin: 4px 0 8px; }
-.empty-sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
+.scan-status, .scan-sub { min-height: 1.3em; }
 .field.missing input, .field.missing textarea {
   border-color: var(--danger); background: var(--danger-soft);
 }
@@ -1072,5 +1118,4 @@ html[data-theme="dark"] .lc-title { color: #a9d8c2; }
   display: block; color: var(--danger);
   font-size: 13px; font-weight: 600; margin-top: 5px;
 }
-html[data-theme="dark"] .scan-cam { background: #000; }
-html[data-theme="dark"] .scan-shot { border-color: var(--border-dark); }
+html[data-theme="dark"] .guide { border-color: rgba(255, 255, 255, 0.65); }
