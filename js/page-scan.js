@@ -27,6 +27,8 @@
   let camStream = null;
   let busy = false;
   const results = { frontText: "", backText: "", qrFront: "", qrBack: "" };
+  /* dev aid: lets the test harness see what each OCR pass produced */
+  window.__scanDebug = { results: results, texts: [] };
 
   const steps = { 1: $("step-1"), 2: $("step-2"), 3: $("step-3") };
   function setSteps(n) {
@@ -232,30 +234,127 @@
   }
 
   /* ---------- one read of a photo ---------- */
+  /* A real photo can be tilted, partly outside the box, or have the
+     text somewhere my fixed crops don't expect — so try several
+     regions/PSMs against the validators and stop at the first that
+     reads. Everything else is a cheap fallback. */
+  function scoreFound(r) {
+    const f = r && r.found;
+    if (!f) return -1;
+    return (f.name ? 1 : 0) + (f.student_id ? 2 : 0) +
+      (f.class_name ? 1 : 0) + (f.address ? 2 : 0);
+  }
+
+  function rotateSrc(src, deg) {
+    const c = document.createElement("canvas");
+    c.width = src.w; c.height = src.h;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(deg * Math.PI / 180);
+    ctx.drawImage(src.el, -src.w / 2, -src.h / 2, src.w, src.h);
+    return { el: c, w: c.width, h: c.height };
+  }
+
+  /* Projection-profile skew estimate: rotate a small copy of the card
+     region over a few angles; the angle that makes the rows of text
+     line up sharpest is the correction. */
+  function estimateSkew(src, rect) {
+    try {
+      const w = 360;
+      const h = Math.max(40, Math.round(w * rect.h / Math.max(1, rect.w)));
+      const base = document.createElement("canvas");
+      base.width = w; base.height = h;
+      const bx = base.getContext("2d", { willReadFrequently: true });
+      bx.fillStyle = "#fff"; bx.fillRect(0, 0, w, h);
+      bx.drawImage(src.el, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
+      const angles = [-12, -9, -6, -3, 0, 3, 6, 9, 12];
+      let best = 0, bestScore = -1;
+      for (let i = 0; i < angles.length; i++) {
+        const a = angles[i];
+        const cc = document.createElement("canvas");
+        cc.width = w; cc.height = h;
+        const cx = cc.getContext("2d", { willReadFrequently: true });
+        cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);
+        cx.translate(w / 2, h / 2);
+        cx.rotate(a * Math.PI / 180);
+        cx.drawImage(base, -w / 2, -h / 2);
+        const d = cx.getImageData(0, 0, w, h).data;
+        const rows = new Float64Array(h);
+        let sum = 0;
+        for (let y = 0; y < h; y++) {
+          let ink = 0;
+          const row = y * w;
+          for (let x = 0; x < w; x++) {
+            const p = (row + x) * 4;
+            if ((d[p] * 299 + d[p + 1] * 587 + d[p + 2] * 114) / 1000 < 150) ink++;
+          }
+          rows[y] = ink;
+          sum += ink;
+        }
+        const mean = sum / h;
+        let v = 0;
+        for (let y = 0; y < h; y++) { const t = rows[y] - mean; v += t * t; }
+        if (v > bestScore) { bestScore = v; best = a; }
+      }
+      return best;
+    } catch (e) { return 0; }
+  }
+
   async function attempt(side, src, opts) {
     const card = cardRect(src.w, src.h);
     if (!opts.upload && !cardPresent(src, card)) return { present: false };
 
-    const qr = decodeQr(src, card);
-    if (side === "front") {
-      /* left 66% of the card: header + name + ID + class, no photo */
-      const strip = drawStrip(src, subRect(card, 0, 0, 0.66, 1), 1200);
-      let text = await ocr(strip, "6", "");
-      let r = ScanParse.parseCard(text, "", qr);
-      if (!r.found.student_id && !ScanParse.digitsOnly(qr)) {
-        /* second pass: middle band, digits only */
-        const band = drawStrip(src, subRect(card, 0.02, 0.28, 0.62, 0.44), 1200);
-        const digits = await ocr(band, "7", "0123456789");
-        const m = digits.match(/\d{7,12}/);
-        if (m) r = ScanParse.parseCard(text + "\n" + m[0], "", qr);
-      }
-      return { present: true, text: text, r: r, qr: qr };
+    const full = { x: 0, y: 0, w: src.w, h: src.h };
+    const qr = decodeQr(src, card) || decodeQr(src, full);
+    let step = 0;
+    const tick = () => {
+      step++;
+      setStatus("Reading the photo…", "Trying view " + step + " — one moment.");
+    };
+
+    const cands = side === "front"
+      ? [[card, "6", 1200], [card, "4", 1200], [full, "11", 1500]]
+      : [[subRect(card, 0, 0, 1, 0.58), "6", 1200], [card, "4", 1300], [full, "11", 1500]];
+    const valid = side === "front" ? ScanParse.validateFront : ScanParse.validateBack;
+
+    let best = null, bestText = "";
+    for (let i = 0; i < cands.length; i++) {
+      tick();
+      const text = await ocr(drawStrip(src, cands[i][0], cands[i][2]), cands[i][1], "");
+      const r = ScanParse.parseCard(side === "front" ? text : "", side === "front" ? "" : text, qr);
+      window.__scanDebug.texts.push({ side: side, cand: i, psm: cands[i][1], valid: valid(r),
+        found: r.found, text: text.slice(0, 500) });
+      if (!best || scoreFound(r) > scoreFound(best)) { best = r; bestText = text; }
+      if (valid(r)) return { present: true, text: text, r: r, qr: qr };
     }
-    /* back: top band carries the address block */
-    const strip = drawStrip(src, subRect(card, 0, 0, 1, 0.58), 1200);
-    const text = await ocr(strip, "6", "");
-    const r = ScanParse.parseCard("", text, qr);
-    return { present: true, text: text, r: r, qr: qr };
+
+    if (side === "front" && !best.found.student_id) {
+      /* digits-only pass over the whole card: the ID can be anywhere */
+      tick();
+      const t = await ocr(drawStrip(src, card, 1400), "7", "0123456789");
+      const m = t.match(/\d{7,12}/);
+      if (m) {
+        const merged = bestText + "\n" + m[0];
+        const r = ScanParse.parseCard(merged, "", qr);
+        if (valid(r)) return { present: true, text: merged, r: r, qr: qr };
+        if (scoreFound(r) > scoreFound(best)) { best = r; bestText = merged; }
+      }
+    }
+
+    /* tilted card: deskew once and try again */
+    const ang = estimateSkew(src, card);
+    if (Math.abs(ang) >= 3) {
+      const rot = rotateSrc(src, ang);
+      tick();
+      const text = await ocr(drawStrip(rot, card, 1300), "4", "");
+      const r = ScanParse.parseCard(side === "front" ? text : "", side === "front" ? "" : text, qr);
+      if (valid(r)) return { present: true, text: text, r: r, qr: qr };
+      if (scoreFound(r) > scoreFound(best)) { best = r; bestText = text; }
+    }
+
+    return { present: true, text: bestText, r: best, qr: qr };
   }
 
   function foundBits(r) {

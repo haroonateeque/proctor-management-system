@@ -89,11 +89,20 @@ const ScanParse = (() => {
     for (const l of frontLines) {
       if (isBoilerplate(l)) continue;
       if (classLine && l === classLine) continue;
+      if (/\d{7}/.test(l)) break; /* reached the ID territory — the name
+         sits above it; stop so junk below (class tokens, barcodes)
+         never joins the name */
       if (!/[A-Z]/.test(l)) continue;
       const d = digitsOnly(l);
       if (id && d.includes(id)) continue;
       if (/^\d[\d\s#-]*$/.test(l)) continue;
       if (/^address/i.test(l)) continue;
+      if (/identity|identification/i.test(l)) continue;
+      if (/\d/.test(l)) continue; /* names never carry digits — also kills
+         OCR-typo'd "Valid Upto: July, 2029" lines that would poison the
+         name and fail plausibility */
+      if (/upto/i.test(l)) continue;
+      if (/^[a-z]{2,5}$/i.test(l)) continue; /* class token like "BCS" */
       out.push(l);
       if (out.length >= 5) break;
     }
