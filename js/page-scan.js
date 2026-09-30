@@ -57,14 +57,15 @@
       workerFailed = true;
       return Promise.reject(new Error("tesseract-not-loaded"));
     }
-    setStatus("Downloading the card reader…", "First visit only — it is cached after that.");
+    setStatus("Downloading the reader (about 7 MB)…",
+      "First visit only — it is cached after this.");
     workerPromise = Tesseract.createWorker("eng", 1, {
       logger: (m) => {
         if (worker) return; /* after init, the loop owns the status line */
         if (m.status === "recognizing text") return;
         const pct = typeof m.progress === "number" ? Math.round(m.progress * 100) + "%" : "";
         setStatus(m.status ? m.status.replace(/^./, (c) => c.toUpperCase()) + " " + pct : "Loading…",
-          "First visit only — it is cached after that.");
+          "First visit only — it is cached after this.");
       },
     }).then((w) => {
       worker = w;
@@ -233,12 +234,12 @@
     const qr = decodeQr(src, card);
     if (side === "front") {
       /* left 66% of the card: header + name + ID + class, no photo */
-      const strip = drawStrip(src, subRect(card, 0, 0, 0.66, 1), 1400);
+      const strip = drawStrip(src, subRect(card, 0, 0, 0.66, 1), 1200);
       let text = await ocr(strip, "6", "");
       let r = ScanParse.parseCard(text, "", qr);
       if (!r.found.student_id && !ScanParse.digitsOnly(qr)) {
         /* second pass: middle band, digits only */
-        const band = drawStrip(src, subRect(card, 0.02, 0.28, 0.62, 0.44), 1500);
+        const band = drawStrip(src, subRect(card, 0.02, 0.28, 0.62, 0.44), 1200);
         const digits = await ocr(band, "7", "0123456789");
         const m = digits.match(/\d{7,12}/);
         if (m) r = ScanParse.parseCard(text + "\n" + m[0], "", qr);
@@ -246,7 +247,7 @@
       return { present: true, text: text, r: r, qr: qr };
     }
     /* back: top band carries the address block */
-    const strip = drawStrip(src, subRect(card, 0, 0, 1, 0.58), 1400);
+    const strip = drawStrip(src, subRect(card, 0, 0, 1, 0.58), 1200);
     const text = await ocr(strip, "6", "");
     const r = ScanParse.parseCard("", text, qr);
     return { present: true, text: text, r: r, qr: qr };

@@ -162,7 +162,8 @@ Or import the folder at <https://vercel.com/new> (no framework preset needed).
 - **Login works but lists are empty** — that's normal; data lives per Supabase project.
 - **Excel says "file could not be read"** — re-save the file as `.xlsx` or `.csv`.
 - **Card scan says the reader didn't load** — scanning downloads its OCR engine
-  (about 3 MB) from the internet the first time, so it needs a connection.
+  (about 7 MB) from the internet the first time, so it needs a connection.
+  Everything is cached after that first visit.
 
 ## File map
 

@@ -9,6 +9,13 @@
   <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <title>Scan ID Card — Proctor Register</title>
   <link rel="stylesheet" href="css/style.css">
+  <!-- OCR reader: warm the CDN up so the ~7 MB first-visit download
+       starts immediately and the language data fetches in parallel
+       with the core instead of after it. -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/tesseract.js@v5.1.1/dist/worker.min.js">
+  <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.1.1/tesseract-core-simd-lstm.wasm.js">
+  <link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz">
 </head>
 <body>
   <main class="page">
@@ -40,7 +47,7 @@
         <div class="form-actions scan-actions">
           <button type="button" class="btn btn-secondary" id="snap-btn">Take Photo Now</button>
           <label class="btn btn-secondary" for="file-input">Upload a Photo</label>
-          <input type="file" id="file-input" class="hidden-input" accept="image/*">
+          <input type="file" id="file-input" class="hidden-input" accept="image/*" capture="environment">
         </div>
         <p class="scan-camoff" id="camoff" hidden>Camera unavailable — you can upload a photo instead.</p>
         <div class="form-error" id="scan-error"></div>
