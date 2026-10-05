@@ -11,7 +11,7 @@ Plain HTML/CSS/JavaScript — no build step — with **Supabase** as the hidden 
 | Home screen with counts | `home.html` |
 | Search students (name / ID / phone / CNIC / guardian number, forgiving match) | `students.html` |
 | Add a student by hand (duplicate-ID warning) | `add-student.html` |
-| Scan the ID card — frame it, tap Capture for front and back, and it prefills a new student | `scan.html` |
+| Scan the card — read its QR code (or printed ID digits) and prefill the new-student form | `scan.html` |
 | Add many students from Excel (3-step wizard, auto column detection) | `upload.html` |
 | Excel template download + "update existing students" import mode | `upload.html` |
 | Student profile + history timeline + fines / warnings / suspensions / notes | `student.html` |
@@ -161,8 +161,9 @@ Or import the folder at <https://vercel.com/new> (no framework preset needed).
 - **"You don't have permission"** — the SQL policies from step 1 weren't run.
 - **Login works but lists are empty** — that's normal; data lives per Supabase project.
 - **Excel says "file could not be read"** — re-save the file as `.xlsx` or `.csv`.
-- **Card scan says the reader didn't load** — scanning downloads its OCR engine
-  (about 7 MB) from the internet the first time, so it needs a connection.
+- **Card scan can't find the QR / ID** — fill the box with the card, avoid glare,
+  and make sure the QR code or ID number is visible. The QR path works with no
+  download; the ID-digit fallback downloads its reader (about 7 MB) the first time.
   Everything is cached after that first visit.
 
 ## File map
@@ -173,7 +174,7 @@ home.html             dashboard
 students.html         search + list + bulk actions
 student.html          profile + history + quick actions
 add-student.html      add / edit form
-scan.html             ID-card scanner (camera → OCR → prefilled form)
+scan.html             ID-card scanner (camera → QR/ID read → prefilled form)
 upload.html           Excel wizard
 more.html             WhatsApp settings / backups / removed / imports / help
 css/style.css         mobile-first styles (+ desktop table view, print)

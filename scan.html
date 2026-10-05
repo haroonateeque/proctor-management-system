@@ -9,13 +9,6 @@
   <script>try{if(localStorage.getItem("pr-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}</script>
   <title>Scan ID Card — Proctor Register</title>
   <link rel="stylesheet" href="css/style.css">
-  <!-- OCR reader: warm the CDN up so the ~7 MB first-visit download
-       starts immediately and the language data fetches in parallel
-       with the core instead of after it. -->
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/tesseract.js@v5.1.1/dist/worker.min.js">
-  <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.1.1/tesseract-core-simd-lstm.wasm.js">
-  <link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz">
 </head>
 <body>
   <main class="page">
@@ -24,75 +17,32 @@
       <span class="page-title">Scan ID Card</span>
     </div></div>
 
-    <div class="steps">
-      <div class="step" id="step-1"><span class="st-num">1</span>Front</div>
-      <div class="step" id="step-2"><span class="st-num">2</span>Back</div>
-      <div class="step" id="step-3"><span class="st-num">3</span>Add</div>
-    </div>
-
-    <!-- GUIDED CAPTURE: frame the card, press Capture, get a verdict -->
+    <!-- ONE-SHOT SCAN: QR code first, printed ID digits as fallback -->
     <section id="scan-view">
       <div class="card scan-card">
         <div class="scan-stage">
           <div class="scan-frame" id="scan-frame">
             <video id="cam" autoplay playsinline muted></video>
-            <img id="shot" hidden alt="Your uploaded card photo">
+            <img id="shot" hidden alt="Your card photo">
             <div class="guide" id="guide">
-              <span class="guide-label" id="guide-label">FRONT</span>
+              <span class="guide-label" id="guide-label">CARD</span>
             </div>
           </div>
         </div>
         <p class="scan-status" id="scan-status">Starting the camera…</p>
-        <p class="scan-sub" id="scan-sub">Lay the card flat and keep it inside the box.</p>
+        <p class="scan-sub" id="scan-sub">Fit the whole card in the box — we'll read the QR code first.</p>
         <div class="form-actions scan-actions">
-          <button type="button" class="btn btn-primary" id="snap-btn">Capture Front</button>
+          <button type="button" class="btn btn-primary" id="snap-btn">Capture</button>
           <label class="btn btn-secondary" for="file-input">Upload a Photo</label>
           <input type="file" id="file-input" class="hidden-input" accept="image/*">
         </div>
         <p class="scan-camoff" id="camoff" hidden>Camera unavailable — you can upload a photo instead.</p>
         <div class="form-error" id="scan-error"></div>
         <div class="form-actions">
-          <a class="btn btn-secondary" href="add-student.html" id="manual-link">Enter Details by Hand</a>
+          <a class="btn btn-secondary" href="add-student.html">Enter Details by Hand</a>
         </div>
       </div>
-      <div class="info-card">The card is read right here on your device — photos are never uploaded anywhere.</div>
-    </section>
-
-    <!-- REVIEW: only shown when the user gives up and goes by hand -->
-    <section id="review-view" hidden>
-      <div class="summary-box" id="review-summary"></div>
-      <div class="card">
-        <div class="form-section">
-          <h3>What we read from the card <span class="hint">(check it, then continue)</span></h3>
-          <div class="form-grid">
-            <div class="field" id="fw-name">
-              <label for="rv-name">Full Name <span class="hint">(required)</span></label>
-              <input type="text" id="rv-name" autocomplete="off">
-            </div>
-            <div class="field" id="fw-student_id">
-              <label for="rv-student_id">Student ID <span class="hint">(required)</span></label>
-              <input type="text" id="rv-student_id" autocomplete="off">
-            </div>
-            <div class="field" id="fw-class_name">
-              <label for="rv-class_name">Class / Program</label>
-              <input type="text" id="rv-class_name" autocomplete="off">
-            </div>
-          </div>
-          <div class="field" id="fw-address">
-            <label for="rv-address">Address</label>
-            <input type="text" id="rv-address" autocomplete="off">
-          </div>
-          <div class="field" id="fw-notes">
-            <label for="rv-notes">Notes</label>
-            <textarea id="rv-notes"></textarea>
-          </div>
-        </div>
-        <div class="form-error" id="review-error"></div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-primary" id="continue-btn">Continue to Student Form</button>
-          <button type="button" class="btn btn-secondary" id="restart-btn">Try Scanning Again</button>
-        </div>
-      </div>
+      <div class="info-card">Only the student ID is read, right here on your device — photos are never uploaded anywhere. Name and address are typed by you.</div>
     </section>
   </main>
 
@@ -100,9 +50,8 @@
   <script src="js/config.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/db.js"></script>
-  <script src="js/scan-parse.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- jsQR + tesseract.js load on demand from js/page-scan.js so the
+       page itself opens instantly even if the CDN is slow -->
   <script src="js/page-scan.js"></script>
 </body>
 </html>
