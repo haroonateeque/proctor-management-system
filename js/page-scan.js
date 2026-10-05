@@ -13,6 +13,23 @@
   });
 
   const $ = (id) => document.getElementById(id);
+
+  /* Card scanning is a mobile job: on a desktop we skip the camera and
+     recommend the phone instead (touch-first UA + coarse-pointer check
+     also catches iPadOS, which hides its iPad identity). */
+  function isHandheld() {
+    const ua = navigator.userAgent || "";
+    if (/iPhone|iPod|iPad|Android|Mobile/i.test(ua)) return true;
+    if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return true;
+    try { return matchMedia("(pointer: coarse)").matches; } catch (e) { return false; }
+  }
+  if (!isHandheld()) {
+    $("scan-view").hidden = true;
+    $("desktop-view").hidden = false;
+    document.title = "Scan ID Card — use your phone";
+    return;
+  }
+
   const CARD_ASPECT = 1.586;          /* width / height of a CR80 card */
 
   const video = $("cam");

@@ -2,7 +2,7 @@
    Bump CACHE_VERSION whenever the PRECACHE list below changes shape
    (files added or renamed). Ordinary content edits do not need a bump:
    pages are network-first and other assets refresh in the background. */
-const CACHE_VERSION = "pr-v10";
+const CACHE_VERSION = "pr-v11";
 const PRECACHE = [
   "index.html", "home.html", "students.html", "student.html",
   "add-student.html", "upload.html", "more.html", "scan.html",

@@ -44,6 +44,23 @@
       </div>
       <div class="info-card">Only the student ID is read, right here on your device — photos are never uploaded anywhere. Name and address are typed by you.</div>
     </section>
+
+    <!-- Desktop: no camera scanning — point people to their phone -->
+    <section id="desktop-view" hidden>
+      <div class="card">
+        <div class="form-section">
+          <h3>Scan cards from your phone <span class="hint">(cameras work best there)</span></h3>
+          <p class="hint">Card scanning is designed for mobile. Open this site on your
+            phone's browser (or home screen), log in, and tap <strong>Scan</strong> —
+            the card's QR code or ID number is read right on the spot.</p>
+          <p class="hint">On this computer you can still add students by hand.</p>
+        </div>
+        <div class="form-actions">
+          <a class="btn btn-primary" href="add-student.html">Add a Student by Hand</a>
+          <a class="btn btn-secondary" href="home.html">Back to Home</a>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script src="vendor/supabase.js"></script>
